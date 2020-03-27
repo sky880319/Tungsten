@@ -110,9 +110,14 @@ bool RsCamera::Initialize()
 
 bool RsCamera::Uninitialize()
 {
+    
+    /*for (std::vector<std::thread>::iterator iter = m_wndProc.begin(); iter != m_wndProc.end(); ++iter)
+    {
+        (*iter).join();
+    }*/
     if (m_eState == Status::Streaming)
         m_rsPipeline.stop();
-
+    //getFmsThread.join();
     /*for (std::vector<rscam_point*>::iterator iter = m_vecPoint.begin(); iter != m_vecPoint.end(); ++iter)
     {
         SAFE_DELETE(*iter);
@@ -122,12 +127,6 @@ bool RsCamera::Uninitialize()
     {
         SAFE_DELETE(*iter);
     }*/
-
-    for (std::vector<std::thread>::iterator iter = m_wndProc.begin(); iter != m_wndProc.end(); ++iter)
-    {
-        //(*iter).join();
-        //SAFE_DELETE(iter);
-    }
 
     /*m_vecPoint.clear();
     m_vecRect.clear();*/
@@ -390,8 +389,8 @@ bool RsCamera::Connect()
 
     s = &m_rsProfile.get_device().first<rs2::depth_sensor>();
     m_fDepthScale = s->get_depth_scale();
-
     m_eState = Status::Ready;
+    getFmsThread = std::thread(&RsCamera::StartStreaming, this);
     return true;
 
 exit_error:
@@ -404,10 +403,31 @@ bool RsCamera::Disconnect()
     if (Uninitialize())
     {
         m_eState = Status::Stopped;
+        return true;
     }
 
     m_eState = Status::Error;
     return false;
+}
+
+void RsCamera::StartStreaming(RsCamera* rscam)
+{
+    if (rscam == NULL)
+    {
+        return;
+    }
+
+    do
+    {
+        rs2::frameset fms = rscam->m_rsPipeline.wait_for_frames();
+        if (fms == NULL)
+        {
+            rscam->m_eState = Status::Error;
+            break;
+        }
+        rscam->m_frameset = rscam->AlignFrames(fms, RS2_STREAM_COLOR, rscam->m_threshold);
+        rscam->m_eState = Status::Streaming;
+    } while (rscam->m_eState == Status::Streaming);
 }
 
 bool RsCamera::Display(Features stream_type)
@@ -417,7 +437,7 @@ bool RsCamera::Display(Features stream_type)
         return false;
     }
 
-    if (m_eState != Status::Ready)
+    if (m_eState != Status::Streaming)
     {
         if (!Connect())
         {
@@ -448,17 +468,19 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
     //cv::setMouseCallback(windowName, WndMouseCallBack, NULL);
 
-    py::init();
     py::func* py_update_frame = new py::func("Streaming", "update_frame");
 
     while (getWindowProperty(windowName, WND_PROP_AUTOSIZE) >= 0)
     {
-        if (rscam->m_eState != Status::Ready && rscam->m_eState != Status::Streaming)
+        if (rscam->m_eState == Status::Ready)
+            continue;
+        else if (rscam->m_eState != Status::Streaming)
             return;
 
         //rscam->m_eState = Status::Streaming;
-        frameset fms = rscam->GetFrames();
-        fms = rscam->AlignFrames(fms, RS2_STREAM_COLOR, rscam->m_threshold);
+        /*frameset fms = rscam->GetFrames();
+        fms = rscam->AlignFrames(fms, RS2_STREAM_COLOR, rscam->m_threshold);*/
+        frameset fms = rscam->m_frameset;
         if (!fms) continue;
 
         frame fm;
@@ -489,8 +511,8 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
 
         Mat img(Size(w, h), rendType, (void*)fm.get_data(), Mat::AUTO_STEP);
 
-        PyObject* pRes = py_update_frame->call(py::ParseNumpy8UC3(img));
-        Py_DECREF(pRes);
+        /*PyObject* pRes = py_update_frame->call(py::ParseNumpy8UC3(img));
+        Py_DECREF(pRes);*/
         
         
         //StreamingOnPython(img);
@@ -508,9 +530,20 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
             //cout << "[Key press] No." << key << endl;
             switch (key)
             {
-            case 32:
-                //features++; // Press "Space" Key to Change Displaying Stream Type.
+            case 115:
+                static int count = 1;
+                static int active_time = time(0);
+                char fn[64] = { 0 };
+                snprintf(fn, 64, "C:/realsense_pic/%d_%d.png", active_time, count);
+                bool res = imwrite(fn, img);
+                if (res)
+                {
+                    cout << "[Save] \"" << fn << "\"(" << count++ << ")" << endl;
+                }
                 break;
+            //case 32:
+            //    //features++; // Press "Space" Key to Change Displaying Stream Type.
+            //    break;
             //case 110: // 'n'
             //    clipdist_mode = 'n';
             //    cout << "[clipdist] Change mode to set near value\n";
@@ -554,7 +587,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     }
 
     //rscam->m_eState = Status::Ready;
-    py::close();
+    destroyWindow(windowName);
     return;
 }
 

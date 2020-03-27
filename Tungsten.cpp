@@ -1,4 +1,5 @@
 #include "Tungsten.h"
+#include "Tungsten_PythonHelper.h"
 
 int main(int argc, char* argv[]) try
 {
@@ -10,6 +11,7 @@ int main(int argc, char* argv[]) try
     int enableFeatures = ColorStream | DepthStream;
 
     bool enableFrameAlign = true;
+    py::init();
 
     // Setup rscamera.
     g_rscam->SetResolution(1280, 720);
@@ -17,7 +19,7 @@ int main(int argc, char* argv[]) try
     g_rscam->Process();
 
     SAFE_DELETE(g_rscam);
-
+    py::close();
     system("pause");
     return EXIT_SUCCESS;
 }

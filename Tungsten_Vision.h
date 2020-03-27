@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctime>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -97,6 +98,8 @@ public:
     void SetThreshold(const rscam_clipper& clipper);
     void SetThreshold(float start, float end);
 
+    static void StartStreaming(RsCamera* rscam);
+
     std::string   GetWindowName() { return m_sWindowName; }
     rs2::frameset GetFrames();
     rs2::frameset AlignFrames(rs2::frameset& frameset, rs2_stream align_to, const rscam_clipper& clipper = rscam_clipper());
@@ -115,6 +118,7 @@ private:
     void KeepImageByDepth(rs2::frameset& frameset, rs2_stream align_to, const rscam_clipper& clipper);
 
     std::vector<std::thread> m_wndProc;
+    std::thread getFmsThread;
 
     rs2::config	          m_rsConfig;
     rs2::pipeline         m_rsPipeline;
@@ -132,6 +136,7 @@ private:
     float m_fClipDist_far = 0.f;*/
     RsCamera_Clipper m_threshold;
     //bool m_bAlign;
+    rs2::frameset m_frameset;
 };
 
 //typedef std::vector<RsCamera::rscam_point*> rsc_points;
