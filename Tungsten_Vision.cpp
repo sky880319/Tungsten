@@ -305,6 +305,7 @@ void RsCamera::StartStreaming(RsCamera* rscam)
         }
         rscam->AlignFrames(fms, RS2_STREAM_COLOR, rscam->m_threshold);
         rscam->m_frameset = fms;
+        rscam->m_frameset.keep();
 
         if (rscam->m_eState == Status::Ready)
         {
@@ -344,8 +345,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
 
     colorizer color_map;
 
-    string windowName = rscam->m_sWindowName + " " + (char)(stream_type + 64);
-
+    string windowName = StringFormat("%s - %d (%d)", rscam->m_sWindowName.c_str(), stream_type, time(0));
     cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
 
     py::func* py_update_frame = new py::func("Streaming", "update_frame");
