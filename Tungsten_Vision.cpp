@@ -33,7 +33,7 @@ RsCamera::RsCamera()
 {
     m_sWindowName = "";
 
-    m_eState = Status::Stopped;
+    m_eState = Status::Closed;
     m_Features = 0;
 
     m_fDepthScale = 0;
