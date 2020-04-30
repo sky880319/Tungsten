@@ -10,6 +10,7 @@ namespace ts
 	ScRobot* g_scrbt;
 	RsCamera* g_rscam;
 	void Rs_StartProc();
+	void ErrorMonter();
 	void Sc_StartProc();
 }
 

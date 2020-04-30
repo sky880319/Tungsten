@@ -1,3 +1,10 @@
 /.vs
 *.log
 *.tlog
+/x64/Debug/test/*.json
+/x64/Debug/train/image/*.jpg
+*.png
+*.jpg
+/x64/Debug/train/json/*.json
+/x64/Debug/web/dets/*.json
+/x64/Debug/valid/*

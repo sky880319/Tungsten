@@ -12,6 +12,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <librealsense2/rs.hpp>
+#include "Tungsten_Motion.h"
 
 #define SAFE_DELETE(pPtr) { delete pPtr; pPtr = NULL; }
 
@@ -21,7 +22,8 @@ enum Features
     DepthStream = 2,
     LInfraredStream = 4,
     RInfraredStream = 8,
-    Features_Last = 16,
+    WebCam = 16,
+    Features_Last = 32,
 };
 
 template<typename ... Args>
@@ -71,9 +73,12 @@ public:
     bool Connect();
     bool Disconnect();
     bool Display(Features stream_type);
+    bool Restart();
 
+    void SetRobot(ScRobot* scrbt) { m_scrbt = scrbt; }
     void SetThreshold(const rscam_clipper& clipper);
     void SetThreshold(float start, float end);
+    Status GetStatus() { return m_eState; }
 
     static void StartStreaming(RsCamera* rscam);
 
@@ -105,6 +110,8 @@ private:
     float m_fDepthScale;
     RsCamera_Clipper m_threshold;
     rs2::frameset m_frameset;
+
+    ScRobot* m_scrbt;
 };
 
 inline Features& operator++(Features& state, int)
@@ -119,5 +126,7 @@ inline Features & operator--(Features & state, int)
     state = static_cast<Features>((i < 1 || i >= Features_Last) ? Features_Last >> 1 : i);
     return state;
 }
+
+void CircleDetection(cv::Mat& img, ScRobot* scrbt);
 
 #endif
