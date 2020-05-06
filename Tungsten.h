@@ -12,6 +12,7 @@ namespace ts
 	void Rs_StartProc();
 	void ErrorMonter();
 	void Sc_StartProc();
+	void ObjQueueProc(ObjectQueue* objQueue);
 }
 
 #endif

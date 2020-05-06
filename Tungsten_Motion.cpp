@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #define SAFE_DELETE(pPtr) { delete pPtr; pPtr = NULL; }
+#define TIMEOUT 20
 
 ScRobot::ScRobot()
 {
@@ -12,8 +13,6 @@ ScRobot::ScRobot()
 	connIP = "192.168.0.201";
 	setting = new DLL_USE_SETTING();
 	memset(setting, 0, sizeof(DLL_USE_SETTING));
-
-	Initialize();
 }
 
 ScRobot::~ScRobot()
@@ -51,7 +50,7 @@ bool ScRobot::Initialize()
 		return false;
 	}
 
-	return false;
+	return true;
 }
 
 bool ScRobot::Uninitialize()
@@ -66,6 +65,10 @@ bool ScRobot::Uninitialize()
 
 bool ScRobot::Connect()
 {
+	if (!Initialize())
+	{
+		return false;
+	}
 	// SC_DEFAULT_CMD: Will run with SC_POLLING_CMD and be used to monitor the multiple controllers simultaneously.
 		// SC_POLLING_CMD: Used to synchronize the data from controller and PC.
 		// SC_DIRECT_CMD:  It will process the one-time command with the highest priority.
@@ -85,19 +88,28 @@ bool ScRobot::Connect()
 	scif_FinishCombineSet(sessionIdx);
 
 	// Wait for the controller accept connection.
+	int time = 0;
+	std::cout << "[RsRobot] Waiting for HIWIN Scara to respond...";
 	while (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
 	{
-		std::cout << "[RsRobot] Waiting for HIWIN Scara to respond..." << std::endl;
+		if (time <= TIMEOUT)
+		{
+			std::cout << std::endl << "[RsRobot] Data setting failed." << std::endl;
+			return false;
+		}
+
+		std::cout << ".";
 		Sleep(1000);
 	}
+	std::cout << std::endl;
 	std::cout << "[RsRobot] Data setting successed." << std::endl;
 
 	return true;
 }
 
-bool ScRobot::RefreshWorldLocation(world& ref)
+bool ScRobot::RefreshWorldLocation(TgWorld& ref)
 {
-	if (SC_CONN_STATE_OK != scif_GetTalkMsg(0, SCIF_CONNECT_STATE))
+	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
 	{
 		std::cout << "[Scara] Can't refresh world location data." << std::endl;
 		return false;
@@ -108,9 +120,9 @@ bool ScRobot::RefreshWorldLocation(world& ref)
 	return true;
 }
 
-bool ScRobot::Move(world& ref)
+bool ScRobot::Move(TgWorld& ref)
 {
-	if (SC_CONN_STATE_OK != scif_GetTalkMsg(0, SCIF_CONNECT_STATE))
+	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
 	{
 		std::cout << "[Scara] Connection failed." << std::endl;
 		return false;
@@ -129,7 +141,7 @@ bool ScRobot::Move(world& ref)
 
 bool ScRobot::RunNC(int fileIdx)
 {
-	if (SC_CONN_STATE_OK != scif_GetTalkMsg(0, SCIF_CONNECT_STATE))
+	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
 	{
 		std::cout << "[Scara] Connection failed." << std::endl;
 		return false;
@@ -143,7 +155,7 @@ bool ScRobot::RunNC(int fileIdx)
 	return true;
 }
 
-std::ostream& operator<<(std::ostream& out, world& ref)
+std::ostream& operator<<(std::ostream& out, TgWorld& ref)
 {
 	out << "World("
 		<< ref.X()

@@ -25,6 +25,7 @@
     <ClCompile Include="..\Tungsten.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\Tungsten_Define.h" />
     <ClInclude Include="..\Tungsten_PythonHelper.h" />
     <ClInclude Include="..\Tungsten_Vision.h" />
     <ClInclude Include="..\Tungsten_Motion.h" />

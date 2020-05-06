@@ -4,7 +4,6 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <ctime>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -13,6 +12,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <librealsense2/rs.hpp>
 #include "Tungsten_Motion.h"
+#include "Tungsten_Define.h"
 
 #define SAFE_DELETE(pPtr) { delete pPtr; pPtr = NULL; }
 
@@ -76,6 +76,7 @@ public:
     bool Restart();
 
     void SetRobot(ScRobot* scrbt) { m_scrbt = scrbt; }
+    void SetQbjQueue(ObjectQueue* objQueue) { m_pTgObjQueue = objQueue; }
     void SetThreshold(const rscam_clipper& clipper);
     void SetThreshold(float start, float end);
     Status GetStatus() { return m_eState; }
@@ -112,6 +113,8 @@ private:
     rs2::frameset m_frameset;
 
     ScRobot* m_scrbt;
+
+    ObjectQueue* m_pTgObjQueue;
 };
 
 inline Features& operator++(Features& state, int)
@@ -120,7 +123,7 @@ inline Features& operator++(Features& state, int)
     state = static_cast<Features>((i < 1 || i >= Features_Last) ? 1 : i);
     return state;
 }
-inline Features & operator--(Features & state, int)
+inline Features& operator--(Features & state, int)
 {
     const int i = static_cast<int>(state) >> 1;
     state = static_cast<Features>((i < 1 || i >= Features_Last) ? Features_Last >> 1 : i);

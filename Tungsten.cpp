@@ -9,38 +9,32 @@ int main(int argc, char* argv[]) try
     g_scrbt = new ScRobot();
     g_rscam = new RsCamera();
     g_rscam->SetRobot(g_scrbt);
-    int enableFeatures = /*ColorStream | DepthStream |*/ WebCam;
 
-    
+    ObjectQueue tgObjQueue;
+    g_rscam->SetQbjQueue(&tgObjQueue);
 
-    /*cv::Mat img = cv::imread("");
-    py::func* py_update_frame = new py::func("Streaming", "update_frame");
-    PyObject* pRes = py_update_frame->call(py::ParseNumpy8UC3(img));
-    Py_DECREF(pRes);*/
-
-    //system("pause");
-
-    // Setup rscamera.
-    //g_rscam->SetResolution(640, 480);
-    g_rscam->SetFeatures(enableFeatures);
-    //g_rscam->Connect();
-    
-    //g_rscam->Display(DepthStream);
+    int enableFeatures = ColorStream | DepthStream /*| WebCam*/;
 
     // Setup Scara Robot.
-    g_scrbt->Connect();
-    g_rscam->Display(WebCam);
-    Sc_StartProc();
-    
-    //std::thread rs_proc(Rs_StartProc);
-    //std::thread rs_errmoniter(ErrorMonter);
-    
+    if (g_scrbt->Connect())
+    {
+        Sc_StartProc();
+    }
+
+    // Setup rscamera.
+    g_rscam->SetResolution(640, 480);
+    g_rscam->SetFeatures(enableFeatures);
+    g_rscam->Connect();
+    g_rscam->Display(ColorStream);
+
+    std::thread rs_proc(Rs_StartProc);
+    std::thread rs_errmoniter(ErrorMonter);
 
     //Release All.
-    //rs_proc.join();
+    rs_proc.join();
     SAFE_DELETE(g_rscam);
     SAFE_DELETE(g_scrbt);
-    //rs_errmoniter.join();
+    rs_errmoniter.join();
     py::close();
     system("pause");
     return EXIT_SUCCESS;
@@ -77,7 +71,7 @@ namespace ts
 
     void Sc_StartProc()
     {
-        world current;
+        TgWorld current;
 
         while (true)
         {
@@ -97,7 +91,7 @@ namespace ts
             }
             std::cout << "Input Position: (" << x << ", " << y /*<< ", " << z << ", " << c*/ << ")" << std::endl;
 
-            world newlocation = current;
+            TgWorld newlocation = current;
             newlocation.setX(x);
             newlocation.setY(y);
 
@@ -106,6 +100,20 @@ namespace ts
             system("pause");
 
             g_scrbt->Move(newlocation);
+        }
+    }
+
+    void ObjQueueProc(ObjectQueue* objQueue)
+    {
+        while (true)
+        {
+            if (objQueue->size() > 0)
+            {
+                //objQueue->front();
+                //do...
+                SAFE_DELETE(objQueue->front());
+                objQueue->pop();
+            }
         }
     }
 }

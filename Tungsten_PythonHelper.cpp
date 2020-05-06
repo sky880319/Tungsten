@@ -7,16 +7,16 @@ namespace py {
         // Set py lib path.
         //PySys_SetPath(Py_DecodeLocale("C:\\Users\\sky88\\source\\repos\\Tungsten\\x64\\Debug", NULL));
         //PyRun_SimpleString("sys.path.append('C:\\\\Users\\\\sky88\\\\source\\\\repos\\\\Tungsten\\\\x64\\\\Debug')");
-        PyRun_SimpleString("import sys");
-        PyRun_SimpleString("import cv2");
-        PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\python36.zip')");
+        //PyRun_SimpleString("import sys");
+        //PyRun_SimpleString("import cv2");
+        /*PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\python36.zip')");
         PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\DLLs')");
         PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib')");
         PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch')");
         PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages')");
         PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages\\win32')");
         PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages\\win32\\lib')");
-        PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages\\Pythonwin')");
+        PyRun_SimpleString("sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages\\Pythonwin')");*/
     }
 
     void close()
