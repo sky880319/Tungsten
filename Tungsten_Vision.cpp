@@ -5,6 +5,8 @@
 #pragma warning(disable: 26444)
 #pragma warning(disable: 4996)
 
+cv::Point* g_pWndPoint;
+
 static bool GetOptions(const char* cmd, const char* opt, char* ret)
 {
     ret[0] = '\0';
@@ -406,6 +408,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     string windowName = StringFormat("%s - %s (%d)", rscam->m_sWindowName.c_str(), (char*)stream_type_str, time(0));
     cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
 
+    cv::setMouseCallback(windowName, WndMouseCallBack, NULL);
     //py::func* py_update_frame = new py::func("Streaming", "update_frame");
 
     std::cout << "[WndProc] Streaming: stream_type(" << (int)stream_type << "), windowName(" << windowName << ")" << endl;
@@ -481,6 +484,26 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
 
             //if (stream_type == ColorStream)
             //    CircleDetection(img);
+            if (g_pWndPoint != NULL)
+            {
+                line(img, Point(0, g_pWndPoint->y), Point(img.cols, g_pWndPoint->y), Scalar(0, 0, 255), 1, cv::LINE_4);
+                line(img, Point(g_pWndPoint->x, 0), Point(g_pWndPoint->x, img.rows), Scalar(0, 0, 255), 1, cv::LINE_4);
+
+                TgPoint vision = parseVisionCoordinate(*g_pWndPoint, img);
+                TgWorld world = parseWorldCoordinate(vision);
+
+                char visionPosition[32];
+                char worldPosition[32];
+                sprintf_s(visionPosition, "vision(%d, %d)", vision.X(), vision.Y());
+                sprintf_s(worldPosition,  "world(%.3f, %.3f)", world.X(),  world.Y());
+                cv::putText(img, visionPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 30), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(0, 0, 255));
+                cv::putText(img, worldPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 10), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(0, 0, 255));
+            }
+            else
+            {
+                line(img, Point(0, img.rows / 2), Point(img.cols, img.rows / 2), Scalar(0, 0, 255), 1, cv::LINE_4);
+                line(img, Point(img.cols / 2, 0), Point(img.cols / 2, img.rows), Scalar(0, 0, 255), 1, cv::LINE_4);
+            }
 
             cv::imshow(windowName, img);
             int key = waitKey(1);
@@ -618,5 +641,17 @@ void CircleDetection(cv::Mat& img, ScRobot* scrbt)
             scrbt->RunNC(430);
             break;
         }
+    }
+}
+
+void WndMouseCallBack(int event, int x, int y, int flags, void* userdata)
+{
+    if (event == cv::EVENT_LBUTTONDOWN)
+    {
+        if (g_pWndPoint != NULL)
+        {
+            SAFE_DELETE(g_pWndPoint);
+        }
+        g_pWndPoint = new cv::Point(x, y);
     }
 }

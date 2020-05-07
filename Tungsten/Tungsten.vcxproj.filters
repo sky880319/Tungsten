@@ -27,6 +27,9 @@
     <ClCompile Include="..\Tungsten_PythonHelper.cpp">
       <Filter>來源檔案</Filter>
     </ClCompile>
+    <ClCompile Include="..\Tungsten_Define.cpp">
+      <Filter>來源檔案</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Tungsten.h">

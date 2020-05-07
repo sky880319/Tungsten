@@ -131,5 +131,6 @@ inline Features& operator--(Features & state, int)
 }
 
 void CircleDetection(cv::Mat& img, ScRobot* scrbt);
+void WndMouseCallBack(int event, int x, int y, int flags, void* userdata);
 
 #endif

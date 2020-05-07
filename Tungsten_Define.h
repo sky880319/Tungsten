@@ -4,8 +4,17 @@
 
 #include <ctime>
 #include <queue>
+#include <opencv2/opencv.hpp>
 #define UNIT_TRANSFORM 100000
+#define PEXEL2MM_FACTOR -0.55f
+#define VISION_COOR_RAD -0.0129852f
+#define VISION_COOR_X -495.f
+#define VISION_COOR_Y 0.f
+#define HOME_X -110.594f
+#define HOME_Y 539.505f
 
+
+struct TgWorld;
 struct TgPoint {
 public:
 	TgPoint() : x(0), y(0), z(0) {}
@@ -84,6 +93,9 @@ public:
 private:
 	int c;
 };
+
+TgPoint parseVisionCoordinate(const cv::Point& img_point, const cv::Mat& img);
+TgWorld parseWorldCoordinate(TgPoint& vision_position);
 
 struct TgObject
 {

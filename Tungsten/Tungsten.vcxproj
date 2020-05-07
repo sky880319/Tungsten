@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\Tungsten_Define.cpp" />
     <ClCompile Include="..\Tungsten_PythonHelper.cpp" />
     <ClCompile Include="..\Tungsten_Vision.cpp" />
     <ClCompile Include="..\Tungsten_Motion.cpp" />
