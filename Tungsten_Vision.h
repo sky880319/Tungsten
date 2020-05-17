@@ -7,6 +7,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <map>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -77,6 +78,7 @@ public:
 
     void SetRobot(ScRobot* scrbt) { m_scrbt = scrbt; }
     void SetQbjQueue(ObjectQueue* objQueue) { m_pTgObjQueue = objQueue; }
+    void SetThreadSafe(std::mutex* m, std::condition_variable* c) { m_mutex = m; m_objQueue_cond = c; }
     void SetThreshold(const rscam_clipper& clipper);
     void SetThreshold(float start, float end);
     Status GetStatus() { return m_eState; }
@@ -94,30 +96,30 @@ private:
     static void ProcStreamByCV(RsCamera* rscam, Features stream_type);
     void KeepImageByDepth(rs2::frameset& frameset, rs2_stream align_to, const rscam_clipper& clipper);
 
-    std::vector<std::thread> m_wndProc;
-    std::thread getFmsThread;
+    std::mutex*              m_mutex;
+    std::condition_variable* m_objQueue_cond;
+    std::map<Features, std::thread> m_wndProc;
+    std::thread              getFmsThread;
 
     rs2::config	          m_rsConfig;
     rs2::pipeline         m_rsPipeline;
     rs2::pipeline_profile m_rsProfile;
 
-    int m_Features;
+    int    m_Features;
     Status m_eState;
 
-    std::string   m_sWindowName;
-
-    int   m_iRes_height;
-    int   m_iRes_width;
-    float m_fDepthScale;
+    std::string      m_sWindowName;
+    float            m_fStreamingFPS;
+    float            m_fImshowFPS;
+    int              m_iRes_height;
+    int              m_iRes_width;
+    float            m_fDepthScale;
     RsCamera_Clipper m_threshold;
-    rs2::frameset m_frameset;
+    rs2::frameset    m_frameset;
 
-    float m_fStreamingFPS;
-    float m_fImshowFPS;
-
-    ScRobot* m_scrbt;
-
+    ScRobot*     m_scrbt;
     ObjectQueue* m_pTgObjQueue;
+    long         oid_count;
 };
 
 inline Features& operator++(Features& state, int)

@@ -9,10 +9,14 @@ namespace ts
 {
 	ScRobot* g_scrbt;
 	RsCamera* g_rscam;
+
+	std::mutex g_mutex;
+	std::condition_variable g_objQueue_cond;
+
 	void Rs_StartProc();
 	void ErrorMonter();
-	void Sc_StartProc();
-	void ObjQueueProc(ObjectQueue* objQueue);
+	void Sc_StartProc(ObjectQueue* objQueue);
+	void ProcessObjectQueue(ObjectQueue* objQueue);
 }
 
 #endif

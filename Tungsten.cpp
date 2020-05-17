@@ -17,12 +17,14 @@ int main(int argc, char* argv[]) try
     int enableFeatures = ColorStream | DepthStream /*| WebCam*/;
 
     // Setup Scara Robot.
-    if (g_scrbt->Connect())
+    /*if (g_scrbt->Connect())
     {
         Sc_StartProc();
-    }
+    }*/
+    std::thread sc_proc(Sc_StartProc, &tgObjQueue);
 
     // Setup rscamera.
+    g_rscam->SetThreadSafe(&g_mutex, &g_objQueue_cond);
     g_rscam->SetResolution(640, 480);
     g_rscam->SetFeatures(enableFeatures);
     g_rscam->Connect();
@@ -33,6 +35,7 @@ int main(int argc, char* argv[]) try
 
     //Release All.
     rs_proc.join();
+    sc_proc.join();
     SAFE_DELETE(g_rscam);
     SAFE_DELETE(g_scrbt);
     rs_errmoniter.join();
@@ -72,61 +75,57 @@ namespace ts
         }
     }
 
-    void Sc_StartProc()
+    void Sc_StartProc(ObjectQueue* objQueue)
     {
         TgWorld current;
 
         while (true)
         {
-            if (!g_scrbt->RefreshWorldLocation(current))
-            {
-                Sleep(1000);
-                continue;
-            }
+            ProcessObjectQueue(objQueue);
+            //if (!g_scrbt->RefreshWorldLocation(current))
+            //{
+            //    Sleep(1000);
+            //    continue;
+            //}
 
-            float x, y, z, c;
-            if (!(std::cin >> x >> y/* >> z >> c*/))
-            {
-                std::cout << "Input error." << std::endl;
-                std::cin.clear();
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-                continue;
-            }
-            std::cout << "Input Position: (" << x << ", " << y /*<< ", " << z << ", " << c*/ << ")" << std::endl;
+            //float x, y, z, c;
+            //if (!(std::cin >> x >> y/* >> z >> c*/))
+            //{
+            //    std::cout << "Input error." << std::endl;
+            //    std::cin.clear();
+            //    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            //    continue;
+            //}
+            //std::cout << "Input Position: (" << x << ", " << y /*<< ", " << z << ", " << c*/ << ")" << std::endl;
 
-            TgWorld newlocation = current;
-            newlocation.setX(x);
-            newlocation.setY(y);
+            //TgWorld newlocation = current;
+            //newlocation.setX(x);
+            //newlocation.setY(y);
 
-            std::cout << "New" << newlocation << std::endl;
+            //std::cout << "New" << newlocation << std::endl;
 
-            system("pause");
+            //system("pause");
 
-            g_scrbt->Move(newlocation);
+            //g_scrbt->Move(newlocation);
         }
     }
 
-    void ObjQueueProc(ObjectQueue* objQueue)
+    void ProcessObjectQueue(ObjectQueue* objQueue)
     {
-        while (true)
+        std::unique_lock<std::mutex> lock(g_mutex);
+        while (objQueue->empty())
         {
-            if (objQueue->size() > 0)
-            {
-                //objQueue->front();
-                //do...
-                SAFE_DELETE(objQueue->front());
-                objQueue->pop();
-            }
+            // release lock as long as the wait and reaquire it afterwards.
+            g_objQueue_cond.wait(lock);
         }
-    }
+        TgObject* val = objQueue->front();
+        objQueue->pop();
+        lock.unlock();
 
-    bool check(std::vector<cv::Point>* p, cv::Point& out)
-    {
-        out = cv::Point(0, 0);
-        p->size();
-        (*p)[0].y;
-
-
-        return false;
+        Sleep(5000);
+        std::cout << "[TgObjQueue] A ROI object has been processed for " << (float)(clock() - val->time) / 1000 << "s. Queue(" << objQueue->size() << ")" << std::endl <<
+                     "  - POP -    oID(" << val->oid << "), Time(" << val->time << "), " << val->vision_point << std::endl << std::endl;
+        
+        SAFE_DELETE(val);
     }
 }

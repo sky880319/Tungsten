@@ -78,7 +78,12 @@ bool ScRobot::Connect()
 		// scif_cb_ReadR(SC_POLLING_CMD, 0, 3, addr);		// Synchronize non-consecutive data addresses.
 		//scif_cmd_ReadR(SC_POLLING_CMD, sessionIdx, 8503, 3);	// Synchronize consecutive data addresses.
 
-	unsigned int r_addr[8] = { 8503, 8504, 8505, 17004, 6321, 6322, 6323, 6326 };
+	unsigned int r_addr[8] = { 8503, 8504, 8505, 
+								FEATURE_LOAD_NCFILE,
+								GET_LOCATION_WX, 
+								GET_LOCATION_WY, 
+								GET_LOCATION_WZ, 
+								GET_LOCATION_WC };
 	unsigned int c_addr[1] = { 22 };
 
 	scif_StartCombineSet(sessionIdx);
@@ -115,7 +120,7 @@ bool ScRobot::RefreshWorldLocation(TgWorld& ref)
 		return false;
 	}
 
-	ref.set((int)scif_ReadR(6321), (int)scif_ReadR(6322), (int)scif_ReadR(6323), (int)scif_ReadR(6326));
+	ref.set((int)scif_ReadR(GET_LOCATION_WX), (int)scif_ReadR(GET_LOCATION_WY), (int)scif_ReadR(GET_LOCATION_WZ), (int)scif_ReadR(GET_LOCATION_WC));
 	std::cout << ref << std::endl;
 	return true;
 }
@@ -131,10 +136,10 @@ bool ScRobot::Move(TgWorld& ref)
 	std::cout << "Move to: world" << ref << std::endl;
 	scif_cmd_WriteR(sessionIdx, 8503, ref.x);	//X
 	scif_cmd_WriteR(sessionIdx, 8504, ref.y);	//Y
-	scif_cmd_WriteR(sessionIdx, 17004, 409);
-	scif_cmd_WriteC(sessionIdx, 22, 1);
+	scif_cmd_WriteR(sessionIdx, FEATURE_LOAD_NCFILE, NC_MOVE_TO_POINT);
+	scif_cmd_WriteC(sessionIdx, SET_PROG_STATUS, 1);
 	Sleep(5000);
-	scif_cmd_WriteC(sessionIdx, 22, 0);
+	scif_cmd_WriteC(sessionIdx, SET_PROG_STATUS, 0);
 
 	return true;
 }
@@ -147,10 +152,10 @@ bool ScRobot::RunNC(int fileIdx)
 		return false;
 	}
 
-	scif_cmd_WriteR(sessionIdx, 17004, fileIdx);
-	scif_cmd_WriteC(sessionIdx, 22, 1);
+	scif_cmd_WriteR(sessionIdx, FEATURE_LOAD_NCFILE, fileIdx);
+	scif_cmd_WriteC(sessionIdx, SET_PROG_STATUS, 1);
 	Sleep(5000);
-	scif_cmd_WriteC(sessionIdx, 22, 0);
+	scif_cmd_WriteC(sessionIdx, SET_PROG_STATUS, 0);
 
 	return true;
 }

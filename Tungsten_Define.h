@@ -5,6 +5,8 @@
 #include <ctime>
 #include <queue>
 #include <opencv2/opencv.hpp>
+#include <mutex>
+#include <condition_variable>
 #define UNIT_TRANSFORM 100000
 #define PEXEL2MM_FACTOR -0.55f
 #define VISION_COOR_RAD -0.0129852f
@@ -12,7 +14,6 @@
 #define VISION_COOR_Y 0.f
 #define HOME_X -110.594f
 #define HOME_Y 539.505f
-
 
 struct TgWorld;
 struct TgPoint {
@@ -108,10 +109,10 @@ TgWorld parseWorldCoordinate(TgPoint& vision_position);
 struct TgObject
 {
 	// Todo: To find a better way to save time (ms).
-	//		 Provide a function to get the expected location .current time 
-	TgObject(unsigned long uid, const TgWorld& point) : uid(uid), time(clock()), vision_point(point) {}
+	//		 Provide a function to get the expected location .current time.
+	TgObject(unsigned long oid, const TgWorld& point) : oid(oid), time(clock()), vision_point(point) {}
 
-	const unsigned long uid;
+	const unsigned long oid;
 	const clock_t		time;
 	TgWorld				vision_point;
 };

@@ -44,6 +44,8 @@ RsCamera::RsCamera()
     m_iRes_height = 480;
     //m_dstAve = 0;
     //m_bAlign = false;
+    
+    oid_count = 0;
 }
 
 RsCamera::~RsCamera()
@@ -118,9 +120,9 @@ bool RsCamera::Uninitialize()
 
     m_eState = Status::Stopped;
     
-    for (std::vector<std::thread>::iterator iter = m_wndProc.begin(); iter != m_wndProc.end(); ++iter)
+    for (std::map<Features, std::thread>::iterator iter = m_wndProc.begin(); iter != m_wndProc.end(); ++iter)
     {
-        (*iter).join();
+        (*iter).second.join();
     }
     m_wndProc.clear();
 
@@ -255,6 +257,15 @@ void RsCamera::Process()
 
 bool RsCamera::Connect()
 {
+    if (!m_mutex)
+    {
+        m_mutex = &std::mutex();
+    }
+    if (!m_objQueue_cond)
+    {
+        m_objQueue_cond = &std::condition_variable();
+    }
+
     rs2::depth_sensor* s;
     if (m_Features <= 0 ||
         !Initialize())
@@ -381,7 +392,13 @@ bool RsCamera::Display(Features stream_type)
         }*/
     }
 
-    m_wndProc.push_back(std::thread(&RsCamera::ProcStreamByCV, this, stream_type));
+    if (m_wndProc.find(stream_type) != m_wndProc.end())
+    {
+        std::cout << "[Display] stream_type(" << (int)stream_type << ") can not streaming, reason: Can't stream the same streaming type." << std::endl;
+        return false;
+    }
+
+    m_wndProc.insert(std::pair<Features, std::thread>(stream_type, std::thread(&RsCamera::ProcStreamByCV, this, stream_type)));
 
     return true;
 }
@@ -431,13 +448,16 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
         VideoCapture capture(0);
         Mat frame;
 
-        while (capture.read(frame))
+        if (rscam->m_scrbt)
         {
-            capture >> frame;
-            CircleDetection(frame, rscam->m_scrbt);
-            line(frame, Point(0, frame.rows / 2), Point(frame.cols, frame.rows / 2), Scalar(0, 0, 255), 1, cv::LINE_AA);
-            imshow(windowName, frame);
-            waitKey(1);
+            while (capture.read(frame))
+            {
+                capture >> frame;
+                CircleDetection(frame, rscam->m_scrbt);
+                line(frame, Point(0, frame.rows / 2), Point(frame.cols, frame.rows / 2), Scalar(0, 0, 255), 1, cv::LINE_AA);
+                imshow(windowName, frame);
+                waitKey(1);
+            }
         }
     }
     else
@@ -483,109 +503,123 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
 
             Mat proc(Size(w, h), rendType, (void*)fm.get_data(), Mat::AUTO_STEP);
 
-            PyObject* pRes = pyEvalnumpy->call(py::ParseNumpy8UC3(proc));
-
-            Mat img;
-            proc.copyTo(img);
-
             if (rec)
             {
                 static int count_rec = 1;
-                static int active_time_rec = time(0);
+                static time_t active_time_rec = time(0);
                 char fn_rec[64] = { 0 };
-                snprintf(fn_rec, 64, "C:/realsense_rec/%d_%d.png", count_rec, active_time_rec);
+                snprintf(fn_rec, 64, "C:/realsense_rec/%d_%d.png", count_rec, (int)active_time_rec);
                 imwrite(fn_rec, proc);
                 count_rec++;
             }
 
-            //if (stream_type == ColorStream)
-            //    CircleDetection(img);
-            if (g_pWndPoint != NULL)
+            if (ColorStream == stream_type)
             {
-                line(img, Point(0, g_pWndPoint->y), Point(img.cols, g_pWndPoint->y), Scalar(38, 194, 237), 1, cv::LINE_4);
-                line(img, Point(g_pWndPoint->x, 0), Point(g_pWndPoint->x, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
+                PyObject* pRes = pyEvalnumpy->call(py::ParseNumpy8UC3(proc));
 
-                TgPoint vision = parseVisionCoordinate(*g_pWndPoint, img);
-                TgWorld world = parseWorldCoordinate(vision);
+                Mat img;
+                proc.copyTo(img);
 
-                char visionPosition[32];
-                char worldPosition[32];
-                sprintf_s(visionPosition, "vision(%d, %d)", vision.X(), vision.Y());
-                sprintf_s(worldPosition,  "world(%.3f, %.3f)", world.X(),  world.Y());
-                cv::putText(img, visionPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 30), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237));
-                cv::putText(img, worldPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 10), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237));
+                if (g_pWndPoint != NULL)
+                {
+                    line(img, Point(0, g_pWndPoint->y), Point(img.cols, g_pWndPoint->y), Scalar(38, 194, 237), 1, cv::LINE_4);
+                    line(img, Point(g_pWndPoint->x, 0), Point(g_pWndPoint->x, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
+
+                    TgPoint vision = parseVisionCoordinate(*g_pWndPoint, img);
+                    TgWorld world = parseWorldCoordinate(vision);
+
+                    char visionPosition[32];
+                    char worldPosition[32];
+                    sprintf_s(visionPosition, "vision(%d, %d)", vision.X(), vision.Y());
+                    sprintf_s(worldPosition, "world(%.3f, %.3f)", world.X(), world.Y());
+                    cv::putText(img, visionPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 30), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237));
+                    cv::putText(img, worldPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 10), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237));
+                }
+                else
+                {
+                    line(img, Point(0, img.rows / 2), Point(img.cols, img.rows / 2), Scalar(38, 194, 237), 1, cv::LINE_4);
+                    line(img, Point(img.cols / 2, 0), Point(img.cols / 2, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
+                }
+
+                char fpsStr[64];
+                sprintf_s(fpsStr, "Proc FPS: %.2f | FPS: %.2f", rscam->m_fImshowFPS, rscam->m_fStreamingFPS);
+                cv::putText(img, fpsStr, cv::Point(20, 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(0, 0, 0), 2);
+                cv::putText(img, fpsStr, cv::Point(20, 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237), 1);
+                //img = img(cv::Rect(0, (img.rows / 2)-100, 640, 200));
+
+                // Showing object center position from yolact result.
+                std::vector<cv::Point> vecPoints;
+                if (py::ParsePointVector(pRes, &vecPoints))
+                {
+                    std::sort(vecPoints.begin(), vecPoints.end(), PointY_Cmp);
+                    int roi_objnum = GetROIObjPoint_Axis_Y(&vecPoints, 375, 105);
+
+                    Scalar color = Scalar(227, 182, 0);
+                    cv::Point* roi_obj = nullptr;
+
+                    if (-1 != roi_objnum)
+                    {
+                        roi_obj = &vecPoints[roi_objnum];
+                        if (NULL != rscam->m_pTgObjQueue &&
+                            NULL != roi_obj && 
+                            !wait_next_pred)
+                        {
+                            // Todo: thread lock
+                            //       z axis is not transform to world space yet.
+                            wait_next_pred = true;
+
+                            std::unique_lock<std::mutex> lock(*rscam->m_mutex);
+
+                            //long uid = (!rscam->m_pTgObjQueue->empty()) ? rscam->m_pTgObjQueue->back()->uid + 1 : 0;
+                            
+                            TgPoint vision_p = parseVisionCoordinate(*roi_obj, img);
+                            TgWorld obj_p = parseWorldCoordinate(vision_p);
+                            depth_frame dptfm = fms.get_depth_frame();
+                            obj_p.setZ(dptfm.get_distance(roi_obj->x, roi_obj->y));
+
+                            TgObject* obj = new TgObject(++rscam->oid_count, obj_p);
+                            rscam->m_pTgObjQueue->push(obj);
+                            std::cout << "[TgObjQueue] New ROI object has been detected and pushed. Queue(" << rscam->m_pTgObjQueue->size() << ")" << std::endl <<
+                                "  - PUSH -   oID(" << rscam->oid_count << "), Time(" << obj->time << "), " << obj->vision_point << std::endl << std::endl;
+
+                            lock.unlock(); //***
+                            rscam->m_objQueue_cond->notify_one();
+                        }
+                    }
+
+                    for (std::vector<cv::Point>::iterator iter = vecPoints.begin(); iter != vecPoints.end(); ++iter)
+                    {
+                        if (&(*iter) == roi_obj)
+                        {
+                            color = Scalar(117, 117, 255);
+                        }
+                        else
+                        {
+                            color = Scalar(227, 182, 0);
+                        }
+
+                        line(img, Point(iter->x - 5, iter->y), Point(iter->x, iter->y), color, 1, cv::LINE_4);
+                        line(img, Point(iter->x, iter->y), Point(iter->x, iter->y + 5), color, 1, cv::LINE_4);
+
+                        char cntrStr[16];
+                        sprintf_s(cntrStr, "%d, %d", iter->x, iter->y);
+                        Size txtSize = getTextSize(cntrStr, cv::FONT_HERSHEY_DUPLEX, 0.4, 1, 0);
+                        rectangle(img, *iter, Point(iter->x + txtSize.width + 5, iter->y - txtSize.height - 6), color, -1);
+                        cv::putText(img, cntrStr, Point(iter->x + 3, iter->y - 4), cv::FONT_HERSHEY_DUPLEX, 0.4, Scalar(255, 255, 255), 1);
+                    }
+                }
+                else
+                {
+                    wait_next_pred = false;
+                }
+
+                cv::imshow(windowName, img);
             }
             else
             {
-                line(img, Point(0, img.rows / 2), Point(img.cols, img.rows / 2), Scalar(38, 194, 237), 1, cv::LINE_4);
-                line(img, Point(img.cols / 2, 0), Point(img.cols / 2, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
+                cv::imshow(windowName, proc);
             }
 
-            char fpsStr[64];
-            sprintf_s(fpsStr, "Proc FPS: %.2f | FPS: %.2f", rscam->m_fImshowFPS, rscam->m_fStreamingFPS);
-            cv::putText(img, fpsStr, cv::Point(20, 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(0, 0, 0), 2);
-            cv::putText(img, fpsStr, cv::Point(20, 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237), 1);
-            //img = img(cv::Rect(0, (img.rows / 2)-100, 640, 200));
-
-            // Showing object center position from yolact result.
-            std::vector<cv::Point> vecPoints;
-            if (py::ParsePointVector(pRes, &vecPoints))
-            {
-                std::sort(vecPoints.begin(), vecPoints.end(), PointY_Cmp);
-                int roi_objnum = GetROIObjPoint_Axis_Y(&vecPoints, 375, 105);
-
-                Scalar color = Scalar(227, 182, 0);
-                cv::Point* roi_obj = nullptr;
-
-                if (-1 != roi_objnum)
-                {
-                    roi_obj = &vecPoints[roi_objnum];
-                    if (roi_obj != NULL && !wait_next_pred)
-                    {
-                        // Todo: thread lock
-                        //       z axis is not transform to world space yet.
-                        wait_next_pred = true;
-                        
-                        long uid = (!rscam->m_pTgObjQueue->empty()) ? rscam->m_pTgObjQueue->back()->uid + 1 : 0;
-                        TgPoint vision_p = parseVisionCoordinate(*roi_obj, img);
-                        TgWorld obj_p = parseWorldCoordinate(vision_p);
-                        depth_frame dptfm = fms.get_depth_frame();
-                        obj_p.setZ(dptfm.get_distance(roi_obj->x, roi_obj->y));
-
-                        TgObject* obj = new TgObject(uid, obj_p);
-                        rscam->m_pTgObjQueue->push(obj);
-                        std::cout << "[TgObjQueue] New ROI object has been detected and pushed. Queue(" << rscam->m_pTgObjQueue->size() << ")" << std::endl << 
-                            "Uid(" << uid << "), Time(" << obj->time << "), " << obj->vision_point << std::endl;
-                    }
-                }
-
-                for (std::vector<cv::Point>::iterator iter = vecPoints.begin(); iter != vecPoints.end(); ++iter)
-                {
-                    if (&(*iter) == roi_obj)
-                    {
-                        color = Scalar(117, 117, 255);
-                    }
-                    else
-                    {
-                        color = Scalar(227, 182, 0);
-                    }
-
-                    line(img, Point(iter->x - 5, iter->y), Point(iter->x, iter->y), color, 1, cv::LINE_4);
-                    line(img, Point(iter->x, iter->y), Point(iter->x, iter->y + 5), color, 1, cv::LINE_4);
-                    
-                    char cntrStr[16];
-                    sprintf_s(cntrStr, "%d, %d", iter->x, iter->y);
-                    Size txtSize = getTextSize(cntrStr, cv::FONT_HERSHEY_DUPLEX, 0.4, 1, 0);
-                    rectangle(img, *iter, Point(iter->x + txtSize.width + 5, iter->y - txtSize.height - 6), color, -1);
-                    cv::putText(img, cntrStr, Point(iter->x + 3, iter->y - 4), cv::FONT_HERSHEY_DUPLEX, 0.4, Scalar(255, 255, 255), 1);
-                }
-            }
-            else
-            {
-                wait_next_pred = false;
-            }
-            
-            cv::imshow(windowName, img);
             int key = waitKey(1);
 
             if (key >= 0)
@@ -599,9 +633,9 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                     break;
                 case 115:
                     static int count = 1;
-                    static int active_time = time(0);
+                    static time_t active_time = time(0);
                     char fn[64] = { 0 };
-                    snprintf(fn, 64, "C:/realsense_pic/%d_%d.png", active_time, count);
+                    snprintf(fn, 64, "C:/realsense_pic/%d_%d.png", (int)active_time, count);
                     bool res = imwrite(fn, proc);
                     if (res)
                     {
@@ -611,15 +645,18 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                 }
             }
 
-            fm_count++;
-            clock_t end_t = clock();
-            clock_t during = end_t - start_t;
-
-            if (during >= 1000)
+            if (ColorStream == stream_type)
             {
-                rscam->m_fImshowFPS = (float)fm_count / during * 1000;
-                fm_count = 0;
-                start_t = end_t;
+                fm_count++;
+                clock_t end_t = clock();
+                clock_t during = end_t - start_t;
+
+                if (during >= 1000)
+                {
+                    rscam->m_fImshowFPS = (float)fm_count / during * 1000;
+                    fm_count = 0;
+                    start_t = end_t;
+                }
             }
         }
     }
@@ -646,6 +683,8 @@ bool RsCamera::AlignFrames(rs2::frameset& frameset, rs2_stream align_to, const r
     rs2::align align(align_to);
     frameset = align.process(frameset);
     KeepImageByDepth(frameset, align_to, clipper);
+
+    return true;
 }
 
 void RsCamera::KeepImageByDepth(rs2::frameset& frameset, rs2_stream align_to, const rscam_clipper& clipper)
