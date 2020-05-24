@@ -413,7 +413,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     char stream_type_str[16] = "";
 
     bool rec = false;
-    bool wait_next_pred = false;
+    bool wait_next_pred = true;
 
     switch (stream_type)
     {
@@ -503,18 +503,9 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
 
             Mat proc(Size(w, h), rendType, (void*)fm.get_data(), Mat::AUTO_STEP);
 
-            if (rec)
-            {
-                static int count_rec = 1;
-                static time_t active_time_rec = time(0);
-                char fn_rec[64] = { 0 };
-                snprintf(fn_rec, 64, "C:/realsense_rec/%d_%d.png", count_rec, (int)active_time_rec);
-                imwrite(fn_rec, proc);
-                count_rec++;
-            }
-
             if (ColorStream == stream_type)
             {
+                depth_frame dptfm = fms.get_depth_frame();
                 PyObject* pRes = pyEvalnumpy->call(py::ParseNumpy8UC3(proc));
 
                 Mat img;
@@ -525,13 +516,13 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                     line(img, Point(0, g_pWndPoint->y), Point(img.cols, g_pWndPoint->y), Scalar(38, 194, 237), 1, cv::LINE_4);
                     line(img, Point(g_pWndPoint->x, 0), Point(g_pWndPoint->x, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
 
-                    TgPoint vision = parseVisionCoordinate(*g_pWndPoint, img);
+                    TgPoint vision = parseVisionCoordinate(*g_pWndPoint, img, dptfm.get_distance(g_pWndPoint->x, g_pWndPoint->y));
                     TgWorld world = parseWorldCoordinate(vision);
 
-                    char visionPosition[32];
-                    char worldPosition[32];
-                    sprintf_s(visionPosition, "vision(%d, %d)", vision.X(), vision.Y());
-                    sprintf_s(worldPosition, "world(%.3f, %.3f)", world.X(), world.Y());
+                    char visionPosition[64];
+                    char worldPosition[64];
+                    sprintf_s(visionPosition, "vision(%d, %d, %d)", vision.X(), vision.Y(), vision.Z());
+                    sprintf_s(worldPosition, "world(%.3f, %.3f, %.3f)", world.X(), world.Y(), world.Z());
                     cv::putText(img, visionPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 30), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237));
                     cv::putText(img, worldPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 10), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237));
                 }
@@ -552,7 +543,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                 if (py::ParsePointVector(pRes, &vecPoints))
                 {
                     std::sort(vecPoints.begin(), vecPoints.end(), PointY_Cmp);
-                    int roi_objnum = GetROIObjPoint_Axis_Y(&vecPoints, 375, 105);
+                    int roi_objnum = GetROIObjPoint_Axis_Y(&vecPoints, 270, 0); // 375, 105
 
                     Scalar color = Scalar(227, 182, 0);
                     cv::Point* roi_obj = nullptr;
@@ -562,29 +553,31 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                         roi_obj = &vecPoints[roi_objnum];
                         if (NULL != rscam->m_pTgObjQueue &&
                             NULL != roi_obj && 
-                            !wait_next_pred)
+                            wait_next_pred)
                         {
                             // Todo: thread lock
                             //       z axis is not transform to world space yet.
-                            wait_next_pred = true;
+                            wait_next_pred = false;
 
                             std::unique_lock<std::mutex> lock(*rscam->m_mutex);
 
                             //long uid = (!rscam->m_pTgObjQueue->empty()) ? rscam->m_pTgObjQueue->back()->uid + 1 : 0;
                             
-                            TgPoint vision_p = parseVisionCoordinate(*roi_obj, img);
+                            TgPoint vision_p = parseVisionCoordinate(*roi_obj, img, dptfm.get_distance(roi_obj->x, roi_obj->y));
                             TgWorld obj_p = parseWorldCoordinate(vision_p);
-                            depth_frame dptfm = fms.get_depth_frame();
-                            obj_p.setZ(dptfm.get_distance(roi_obj->x, roi_obj->y));
 
                             TgObject* obj = new TgObject(++rscam->oid_count, obj_p);
                             rscam->m_pTgObjQueue->push(obj);
-                            std::cout << "[TgObjQueue] New ROI object has been detected and pushed. Queue(" << rscam->m_pTgObjQueue->size() << ")" << std::endl <<
-                                "  - PUSH -   oID(" << rscam->oid_count << "), Time(" << obj->time << "), " << obj->vision_point << std::endl << std::endl;
+                            std::cout << "[TgObjQueue] New ROI object has been detected and pushed." << std::endl <<
+                                         "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), " << obj->vision_point << std::endl << std::endl;
 
                             lock.unlock(); //***
                             rscam->m_objQueue_cond->notify_one();
                         }
+                    }
+                    else
+                    {
+                        wait_next_pred = true;
                     }
 
                     for (std::vector<cv::Point>::iterator iter = vecPoints.begin(); iter != vecPoints.end(); ++iter)
@@ -608,12 +601,20 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                         cv::putText(img, cntrStr, Point(iter->x + 3, iter->y - 4), cv::FONT_HERSHEY_DUPLEX, 0.4, Scalar(255, 255, 255), 1);
                     }
                 }
-                else
-                {
-                    wait_next_pred = false;
-                }
-
                 cv::imshow(windowName, img);
+
+                if (rec)
+                {
+                    static int count_rec = 1;
+                    static time_t active_time_rec = time(0);
+                    char fn_rec[64] = { 0 };
+                    char fn_rec2[64] = { 0 };
+                    snprintf(fn_rec, 64, "C:/realsense_rec_msk/%d_%d.png", count_rec, (int)active_time_rec);
+                    snprintf(fn_rec2, 64, "C:/realsense_rec_ori/%d_%d.png", count_rec, (int)active_time_rec);
+                    imwrite(fn_rec, img);
+                    imwrite(fn_rec2, proc);
+                    count_rec++;
+                }
             }
             else
             {

@@ -16,7 +16,8 @@ namespace ts
 	void Rs_StartProc();
 	void ErrorMonter();
 	void Sc_StartProc(ObjectQueue* objQueue);
-	void ProcessObjectQueue(ObjectQueue* objQueue);
+	void ProcessObjectQueue(ObjectQueue* objQueue/*, const TgWorld& current*/);
+	bool evalObjectTracking(TgObject& trace_obj/*, const TgWorld& current_location*/, TgWorld& except_location, int& delay);
 }
 
 #endif
