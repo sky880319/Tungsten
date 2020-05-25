@@ -135,5 +135,7 @@ inline Features& operator--(Features & state, int)
 
 void CircleDetection(cv::Mat& img, ScRobot* scrbt);
 void WndMouseCallBack(int event, int x, int y, int flags, void* userdata);
+bool PointY_Cmp(cv::Point& p1, cv::Point& p2);
+int GetROIObjPoint_Axis_Y(std::vector<cv::Point>* points, int upper, int lower);
 
 #endif

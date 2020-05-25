@@ -1115,94 +1115,115 @@ def prep_display2(dets_out, img, h, w, undo_transform=True, class_color=False, m
             num_dets_to_consider = j
             break
 
-    # Quick and dirty lambda for selecting the color for a particular index
-    # Also keeps track of a per-gpu color cache for maximum speed
-    def get_color(j, on_gpu=None):
-        global color_cache
-        color_idx = (classes[j] * 5 if class_color else j * 5) % len(COLORS)
-        
-        if on_gpu is not None and color_idx in color_cache[on_gpu]:
-            return color_cache[on_gpu][color_idx]
-        else:
-            color = COLORS[color_idx]
-            if not undo_transform:
-                # The image might come in as RGB or BRG, depending
-                color = (color[2], color[1], color[0])
-            if on_gpu is not None:
-                color = torch.Tensor(color).to(on_gpu).float() / 255.
-                color_cache[on_gpu][color_idx] = color
-            return color
+##    # Quick and dirty lambda for selecting the color for a particular index
+##    # Also keeps track of a per-gpu color cache for maximum speed
+##    def get_color(j, on_gpu=None):
+##        global color_cache
+##        color_idx = (classes[j] * 5 if class_color else j * 5) % len(COLORS)
+##        
+##        if on_gpu is not None and color_idx in color_cache[on_gpu]:
+##            return color_cache[on_gpu][color_idx]
+##        else:
+##            color = COLORS[color_idx]
+##            if not undo_transform:
+##                # The image might come in as RGB or BRG, depending
+##                color = (color[2], color[1], color[0])
+##            if on_gpu is not None:
+##                color = torch.Tensor(color).to(on_gpu).float() / 255.
+##                color_cache[on_gpu][color_idx] = color
+##            return color
+##
+##    # First, draw the masks on the GPU where we can do it really fast
+##    # Beware: very fast but possibly unintelligible mask-drawing code ahead
+##    # I wish I had access to OpenGL or Vulkan but alas, I guess Pytorch tensor operations will have to suffice
+##    
+##    if cfg.eval_mask_branch and num_dets_to_consider > 0:
+##        # After this, mask is of size [num_dets, h, w, 1]
+##        masks = masks[:num_dets_to_consider, :, :, None]
+##        
+##        # Prepare the RGB images for each mask given their color (size [num_dets, h, w, 1])
+##        colors = torch.cat([get_color(j, on_gpu=img_gpu.device.index).view(1, 1, 1, 3) for j in range(num_dets_to_consider)], dim=0)
+##        masks_color = masks.repeat(1, 1, 1, 3) * colors * mask_alpha
+##
+##        # This is 1 everywhere except for 1-mask_alpha where the mask is
+##        inv_alph_masks = masks * (-mask_alpha) + 1
+##        
+##        # I did the math for this on pen and paper. This whole block should be equivalent to:
+##        #    for j in range(num_dets_to_consider):
+##        #        img_gpu = img_gpu * inv_alph_masks[j] + masks_color[j]
+##        masks_color_summand = masks_color[0]
+##        if num_dets_to_consider > 1:
+##            inv_alph_cumul = inv_alph_masks[:(num_dets_to_consider-1)].cumprod(dim=0)
+##            masks_color_cumul = masks_color[1:] * inv_alph_cumul
+##            masks_color_summand += masks_color_cumul.sum(dim=0)
+##
+##        img_gpu = img_gpu * inv_alph_masks.prod(dim=0) + masks_color_summand
+##    
+##    # Then draw the stuff that needs to be done on the cpu
+##    # Note, make sure this is a uint8 tensor or opencv will not anti alias text for whatever reason
+##    img_numpy = (img_gpu * 255).byte().cpu().numpy()
 
-    # First, draw the masks on the GPU where we can do it really fast
-    # Beware: very fast but possibly unintelligible mask-drawing code ahead
-    # I wish I had access to OpenGL or Vulkan but alas, I guess Pytorch tensor operations will have to suffice
-    
-    if cfg.eval_mask_branch and num_dets_to_consider > 0:
-        # After this, mask is of size [num_dets, h, w, 1]
-        masks = masks[:num_dets_to_consider, :, :, None]
-        
-        # Prepare the RGB images for each mask given their color (size [num_dets, h, w, 1])
-        colors = torch.cat([get_color(j, on_gpu=img_gpu.device.index).view(1, 1, 1, 3) for j in range(num_dets_to_consider)], dim=0)
-        masks_color = masks.repeat(1, 1, 1, 3) * colors * mask_alpha
+##    if num_dets_to_consider == 0:
+##        return img_numpy
 
-        # This is 1 everywhere except for 1-mask_alpha where the mask is
-        inv_alph_masks = masks * (-mask_alpha) + 1
-        
-        # I did the math for this on pen and paper. This whole block should be equivalent to:
-        #    for j in range(num_dets_to_consider):
-        #        img_gpu = img_gpu * inv_alph_masks[j] + masks_color[j]
-        masks_color_summand = masks_color[0]
-        if num_dets_to_consider > 1:
-            inv_alph_cumul = inv_alph_masks[:(num_dets_to_consider-1)].cumprod(dim=0)
-            masks_color_cumul = masks_color[1:] * inv_alph_cumul
-            masks_color_summand += masks_color_cumul.sum(dim=0)
+##    for j in reversed(range(num_dets_to_consider)):
+##        x1, y1, x2, y2 = boxes[j, :]
+##        color = get_color(j)
+##        score = scores[j]
+##
+##        cv2.rectangle(img_numpy, (x1, y1), (x2, y2), color, 1)
+##
+##        _class = cfg.dataset.class_names[classes[j]]
+##        text_str = '%s: %.2f' % (_class, score) if True else _class
+##
+##        font_face = cv2.FONT_HERSHEY_DUPLEX
+##        font_scale = 0.6
+##        font_thickness = 1
+##
+##        text_w, text_h = cv2.getTextSize(text_str, font_face, font_scale, font_thickness)[0]
+##
+##        text_pt = (x1, y1 - 3)
+##        text_color = [255, 255, 255]
+##
+##        cv2.rectangle(img_numpy, (x1, y1), (x1 + text_w, y1 - text_h - 4), color, -1)
+##        cv2.putText(img_numpy, text_str, text_pt, font_face, font_scale, text_color, font_thickness, cv2.LINE_AA)
+##        
+##    #img_numpy = img_numpy[:, :, (0, 1, 2)]
 
-        img_gpu = img_gpu * inv_alph_masks.prod(dim=0) + masks_color_summand
-    
-    # Then draw the stuff that needs to be done on the cpu
-    # Note, make sure this is a uint8 tensor or opencv will not anti alias text for whatever reason
-    img_numpy = (img_gpu * 255).byte().cpu().numpy()
+##    img_numpy = np.ascontiguousarray(img_numpy, dtype=np.uint8)
+##
+##    if np.sum(color_mask) != 0:
+##        # Find the count of mask, and each size.
+##        [obj, img_h, img_w] = color_mask.shape
+##        for cont in range(obj):
+##            M=cv2.moments(color_mask[cont])
+##            if M["m00"] > 0:
+##                cX= int(M["m10"] / M["m00"])
+##                cY= int(M["m01"] / M["m00"])
+##                cv2.circle(img_numpy, (cX,cY),4,(140,199,0),-1)
+##                cetstr = '(%d, %d)' % (cX, cY)
+##                cv2.putText(img_numpy, cetstr, (cX,cY), cv2.FONT_HERSHEY_DUPLEX, 0.5, (140,199,0), 1, cv2.LINE_AA)
+##  return img_numpy
 
     if num_dets_to_consider == 0:
-        return img_numpy
-
-    for j in reversed(range(num_dets_to_consider)):
-        x1, y1, x2, y2 = boxes[j, :]
-        color = get_color(j)
-        score = scores[j]
-
-        cv2.rectangle(img_numpy, (x1, y1), (x2, y2), color, 1)
-
-        _class = cfg.dataset.class_names[classes[j]]
-        text_str = '%s: %.2f' % (_class, score) if True else _class
-
-        font_face = cv2.FONT_HERSHEY_DUPLEX
-        font_scale = 0.6
-        font_thickness = 1
-
-        text_w, text_h = cv2.getTextSize(text_str, font_face, font_scale, font_thickness)[0]
-
-        text_pt = (x1, y1 - 3)
-        text_color = [255, 255, 255]
-
-        cv2.rectangle(img_numpy, (x1, y1), (x1 + text_w, y1 - text_h - 4), color, -1)
-        cv2.putText(img_numpy, text_str, text_pt, font_face, font_scale, text_color, font_thickness, cv2.LINE_AA)
-        
-    #img_numpy = img_numpy[:, :, (0, 1, 2)]
-    img_numpy = np.ascontiguousarray(img_numpy, dtype=np.uint8)
+        return None
     
     if np.sum(color_mask) != 0:
+        # Find the count of mask, and each size.
+        # Create a np array to save centroid position.
         [obj, img_h, img_w] = color_mask.shape
+        cntr_pos = np.zeros([obj, 2], dtype='int32')
+        
         for cont in range(obj):
             M=cv2.moments(color_mask[cont])
             if M["m00"] > 0:
                 cX= int(M["m10"] / M["m00"])
                 cY= int(M["m01"] / M["m00"])
-                cv2.circle(img_numpy, (cX,cY),4,(140,199,0),-1)
-                cetstr = '(%d, %d)' % (cX, cY)
-                cv2.putText(img_numpy, cetstr, (cX,cY), cv2.FONT_HERSHEY_DUPLEX, 0.5, (140,199,0), 1, cv2.LINE_AA)
-
-    return img_numpy
+                cntr_pos[cont, 0] = cX
+                cntr_pos[cont, 1] = cY
+        return cntr_pos
+    
+    return None
 
 # valid/json/image0274.png
 def evalnumpy(img):
@@ -1212,9 +1233,12 @@ def evalnumpy(img):
     frame = torch.from_numpy(img).cuda().float()
     batch = FastBaseTransform()(frame.unsqueeze(0))
     preds = net(batch)
+
+    cntr_pos = prep_display2(preds, frame, None, None, undo_transform=False)
+    # print(cntr_pos)
     
-    img_numpy = prep_display2(preds, frame, None, None, undo_transform=False)
-    cv2.imshow('Yolact Predict', img_numpy)
+    # img_numpy = prep_display2(preds, frame, None, None, undo_transform=False)
+    # cv2.imshow('Yolact Predict', img_numpy)
     # global contours
     
     # _, contours, hierarchy = cv2.findContours(detected_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -1226,8 +1250,7 @@ def evalnumpy(img):
     #     cv2.circle(detected_mask, (cX,cY),4,(140,199,0),-1)
     
     # cv2.imshow('detect', detected_mask)
-    
-    return 0
+    return cntr_pos
 # import sys
 # sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\python36.zip')
 # sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\DLLs')

@@ -298,9 +298,8 @@ bool RsCamera::Disconnect()
 bool RsCamera::Restart()
 {
     if (Uninitialize() &&
-        Connect() &&
-        Display(Features::ColorStream) &&
-        Display(Features::DepthStream)
+        Connect() //&&
+        //Display(Features::ColorStream)
         )
     {
         return true;
@@ -397,6 +396,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     char stream_type_str[16] = "";
 
     bool rec = false;
+    bool wait_next_pred = false;
 
     switch (stream_type)
     {
@@ -418,14 +418,12 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     default:
         return;
     }
+    
+    py::func* pyEvalnumpy = new py::func("eval", "evalnumpy");
 
     string windowName = StringFormat("%s - %s (%d)", rscam->m_sWindowName.c_str(), (char*)stream_type_str, time(0));
     cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
-
     cv::setMouseCallback(windowName, WndMouseCallBack, NULL);
-    py::func* py_update_frame = new py::func("eval", "evalnumpy");
-    //py::func* py_update_frame = new py::func("Streaming", "update_frame");
-
     std::cout << "[WndProc] Streaming: stream_type(" << (int)stream_type << "), windowName(" << windowName << ")" << endl;
 
     if (WebCam == stream_type)
@@ -454,8 +452,8 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
             else if (rscam->m_eState != Status::Streaming)
                 break;
 
-            frameset* fms = &rscam->m_frameset;
-            if (fms == nullptr) continue;
+            frameset fms = rscam->m_frameset;
+            if (&fms == nullptr) continue;
 
             frame fm;
             int rendType;
@@ -464,29 +462,28 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
             {
             default:
             case ColorStream:
-                fm = fms->get_color_frame();
+                fm = fms.get_color_frame();
                 rendType = CV_8UC3;
                 break;
             case DepthStream:
-                fm = fms->get_depth_frame().apply_filter(color_map);
+                fm = fms.get_depth_frame().apply_filter(color_map);
                 rendType = CV_8UC3;
                 break;
             case LInfraredStream:
-                fm = fms->get_infrared_frame(1);
+                fm = fms.get_infrared_frame(1);
                 rendType = CV_8UC1;
                 break;
             case RInfraredStream:
-                fm = fms->get_infrared_frame(2);
+                fm = fms.get_infrared_frame(2);
                 rendType = CV_8UC1;
                 break;
             }
             const int w = fm.as<video_frame>().get_width();
             const int h = fm.as<video_frame>().get_height();
-            
+
             Mat proc(Size(w, h), rendType, (void*)fm.get_data(), Mat::AUTO_STEP);
 
-            PyObject* pRes = py_update_frame->call(py::ParseNumpy8UC3(proc));
-            Py_XDECREF(pRes);
+            PyObject* pRes = pyEvalnumpy->call(py::ParseNumpy8UC3(proc));
 
             Mat img;
             proc.copyTo(img);
@@ -528,7 +525,66 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
             sprintf_s(fpsStr, "Proc FPS: %.2f | FPS: %.2f", rscam->m_fImshowFPS, rscam->m_fStreamingFPS);
             cv::putText(img, fpsStr, cv::Point(20, 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(0, 0, 0), 2);
             cv::putText(img, fpsStr, cv::Point(20, 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237), 1);
+            //img = img(cv::Rect(0, (img.rows / 2)-100, 640, 200));
 
+            // Showing object center position from yolact result.
+            std::vector<cv::Point> vecPoints;
+            if (py::ParsePointVector(pRes, &vecPoints))
+            {
+                std::sort(vecPoints.begin(), vecPoints.end(), PointY_Cmp);
+                int roi_objnum = GetROIObjPoint_Axis_Y(&vecPoints, 375, 105);
+
+                Scalar color = Scalar(227, 182, 0);
+                cv::Point* roi_obj = nullptr;
+
+                if (-1 != roi_objnum)
+                {
+                    roi_obj = &vecPoints[roi_objnum];
+                    if (roi_obj != NULL && !wait_next_pred)
+                    {
+                        // Todo: thread lock
+                        //       z axis is not transform to world space yet.
+                        wait_next_pred = true;
+                        
+                        long uid = (!rscam->m_pTgObjQueue->empty()) ? rscam->m_pTgObjQueue->back()->uid + 1 : 0;
+                        TgPoint vision_p = parseVisionCoordinate(*roi_obj, img);
+                        TgWorld obj_p = parseWorldCoordinate(vision_p);
+                        depth_frame dptfm = fms.get_depth_frame();
+                        obj_p.setZ(dptfm.get_distance(roi_obj->x, roi_obj->y));
+
+                        TgObject* obj = new TgObject(uid, obj_p);
+                        rscam->m_pTgObjQueue->push(obj);
+                        std::cout << "[TgObjQueue] New ROI object has been detected and pushed. Queue(" << rscam->m_pTgObjQueue->size() << ")" << std::endl << 
+                            "Uid(" << uid << "), Time(" << obj->time << "), " << obj->vision_point << std::endl;
+                    }
+                }
+
+                for (std::vector<cv::Point>::iterator iter = vecPoints.begin(); iter != vecPoints.end(); ++iter)
+                {
+                    if (&(*iter) == roi_obj)
+                    {
+                        color = Scalar(117, 117, 255);
+                    }
+                    else
+                    {
+                        color = Scalar(227, 182, 0);
+                    }
+
+                    line(img, Point(iter->x - 5, iter->y), Point(iter->x, iter->y), color, 1, cv::LINE_4);
+                    line(img, Point(iter->x, iter->y), Point(iter->x, iter->y + 5), color, 1, cv::LINE_4);
+                    
+                    char cntrStr[16];
+                    sprintf_s(cntrStr, "%d, %d", iter->x, iter->y);
+                    Size txtSize = getTextSize(cntrStr, cv::FONT_HERSHEY_DUPLEX, 0.4, 1, 0);
+                    rectangle(img, *iter, Point(iter->x + txtSize.width + 5, iter->y - txtSize.height - 6), color, -1);
+                    cv::putText(img, cntrStr, Point(iter->x + 3, iter->y - 4), cv::FONT_HERSHEY_DUPLEX, 0.4, Scalar(255, 255, 255), 1);
+                }
+            }
+            else
+            {
+                wait_next_pred = false;
+            }
+            
             cv::imshow(windowName, img);
             int key = waitKey(1);
 
@@ -569,6 +625,8 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     }
     destroyWindow(windowName);
     std::cout << "[WndProc] Thread destroyed: stream_type(" << (int)stream_type << "), windowName(" << windowName << ")" << endl;
+
+    SAFE_DELETE(pyEvalnumpy);
     return;
 }
 
@@ -689,4 +747,28 @@ void WndMouseCallBack(int event, int x, int y, int flags, void* userdata)
         }
         g_pWndPoint = new cv::Point(x, y);
     }
+}
+
+
+bool PointY_Cmp(cv::Point& p1, cv::Point& p2) {
+    return p1.y > p2.y;
+}
+
+int GetROIObjPoint_Axis_Y(std::vector<cv::Point>* points, int upper, int lower)
+{
+    int count = 0;
+    
+    for (int i = 0; i < points->size(); i++)
+    {
+        int y = (*points)[i].y;
+        if (y > lower && y < upper)//³]¸mROI°Ï°ì
+        {
+            if (++count >= 2)
+            {
+                return i;
+            }
+        }
+    }
+
+    return -1;
 }

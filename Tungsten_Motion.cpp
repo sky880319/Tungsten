@@ -155,6 +155,16 @@ bool ScRobot::RunNC(int fileIdx)
 	return true;
 }
 
+std::ostream& operator<<(std::ostream& out, TgPoint& ref)
+{
+	out << "Point("
+		<< ref.X()
+		<< ", " << ref.Y()
+		<< ", " << ref.Z()
+		<< ")";
+	return out;
+}
+
 std::ostream& operator<<(std::ostream& out, TgWorld& ref)
 {
 	out << "World("

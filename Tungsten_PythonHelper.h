@@ -30,13 +30,13 @@ namespace py {
         PyObject* module;
         PyObject* function;
         PyObject* dict;
+        PyObject* result;
 
         PyGILState_STATE gstate;
         std::mutex m_Mutex;
     };
 
-    PyObject* ParseNumpy8UC3(cv::Mat& mat);
+    PyObject* ParseNumpy8UC3(cv::Mat& proc);
+    bool ParsePointVector(PyObject* obj, std::vector<cv::Point>* out);
 }
-
-#define Py_END_ALLOW_THREADS
 #endif

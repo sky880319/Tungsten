@@ -37,6 +37,7 @@ private:
     DLL_USE_SETTING* setting;
 };
 
+std::ostream& operator<<(std::ostream& out, TgPoint& ref);
 std::ostream& operator<<(std::ostream& out, TgWorld& ref);
 
 #endif

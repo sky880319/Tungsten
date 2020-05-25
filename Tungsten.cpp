@@ -6,6 +6,7 @@ using namespace ts;
 int main(int argc, char* argv[]) try
 {
     py::init();
+    Py_BEGIN_ALLOW_THREADS
     g_scrbt = new ScRobot();
     g_rscam = new RsCamera();
     g_rscam->SetRobot(g_scrbt);
@@ -35,8 +36,9 @@ int main(int argc, char* argv[]) try
     SAFE_DELETE(g_rscam);
     SAFE_DELETE(g_scrbt);
     rs_errmoniter.join();
-    py::close();
     system("pause");
+    Py_END_ALLOW_THREADS
+    py::close();
     return EXIT_SUCCESS;
 }
 catch (const rs2::error& e)
@@ -66,6 +68,7 @@ namespace ts
                 std::cout << "[Stream Process] Stopped reason: (m_eState == Error)." << std::endl;
                 g_rscam->Restart();
             }
+
         }
     }
 
@@ -115,5 +118,15 @@ namespace ts
                 objQueue->pop();
             }
         }
+    }
+
+    bool check(std::vector<cv::Point>* p, cv::Point& out)
+    {
+        out = cv::Point(0, 0);
+        p->size();
+        (*p)[0].y;
+
+
+        return false;
     }
 }

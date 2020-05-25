@@ -1,6 +1,7 @@
 #include "Tungsten_PythonHelper.h"
 
-namespace py {
+namespace py 
+{
     void init()
     {
         Py_SetPythonHome((wchar_t*)L"C:\\Program Files\\Python37");
@@ -46,41 +47,37 @@ namespace py {
 
     func::func(const char* module_name, const char* func_name)
     {
-        Py_BEGIN_ALLOW_THREADS
-            gstate = PyGILState_Ensure();
-            module = nullptr;
-            dict = nullptr;
-            function = nullptr;
-
-            module = PyImport_Import(PyUnicode_FromString(module_name));
-            if (module == nullptr)
-            {
-                PyErr_Print();
-                return;
-            }
-            dict = PyModule_GetDict(module);
-            if (dict == nullptr)
-            {
-                PyErr_Print();
-                return;
-            }
-            function = PyDict_GetItemString(dict, func_name);
-            if (function == nullptr)
-            {
-                PyErr_Print();
-                return;
-            }
-        } Py_END_ALLOW_THREADS;
+        module = nullptr;
+        dict = nullptr;
+        function = nullptr;
+        result = nullptr;
+            
+        gstate = PyGILState_Ensure();
+        module = PyImport_Import(PyUnicode_FromString(module_name));
+        if (module == nullptr)
+        {
+            PyErr_Print();
+            return;
+        }
+        dict = PyModule_GetDict(module);
+        if (dict == nullptr)
+        {
+            PyErr_Print();
+            return;
+        }
+        function = PyDict_GetItemString(dict, func_name);
+        if (function == nullptr)
+        {
+            PyErr_Print();
+            return;
+        }
     }
 
     func::~func()
     {
-        if (module != NULL)
-            Py_DECREF(module);
-        if (function != NULL)
-            Py_DECREF(function);
-        if (dict != NULL)
-            Py_DECREF(dict);
+        Py_XDECREF(module);
+        Py_XDECREF(function);
+        Py_XDECREF(dict);
         std::cout << "[py::func] destructed." << std::endl;
         PyGILState_Release(gstate);
     }
@@ -94,26 +91,31 @@ namespace py {
 
         if (PyCallable_Check(function))
         {
-            Py_BEGIN_ALLOW_THREADS
-                gstate = PyGILState_Ensure();
-                PyObject* res = PyObject_CallObject(function, args);
-                Py_XDECREF(args);
+            // Todo: fix counting error.
 
-                if (res == nullptr)
-                {
-                    PyErr_Print();
-                    return NULL;
-                }
-                return res;
-            } Py_END_ALLOW_THREADS;
+            //PyGILState_STATE gstate = PyGILState_Ensure();
+            result = PyObject_CallObject(function, args);
+            //PyGILState_Release(gstate);
+            Py_XDECREF(args);
+
+            if (result == nullptr)
+            {
+                PyErr_Print();
+                return NULL;
+            }
+
+            Py_XDECREF(result);
+            return result;
         }
         
         return NULL;
     }
     
-    PyObject* ParseNumpy8UC3(cv::Mat& proc)
+    PyObject* py::ParseNumpy8UC3(cv::Mat& proc)
     {
+        PyGILState_STATE gstate = PyGILState_Ensure();
         import_array();
+        PyGILState_Release(gstate);
         // Dimension of 8U3C type array ( height, width, number of color channels per pixel).
         npy_intp dims[3] = { proc.rows, proc.cols, 3 };
         PyObject* py_array, *pArgs;
@@ -124,8 +126,21 @@ namespace py {
         pArgs = PyTuple_New(1);
         int res = PyTuple_SetItem(pArgs, 0, py_array);
 
-        //Py_DECREF(py_array);
-
         return pArgs;
+    }
+
+    bool py::ParsePointVector(PyObject* obj, std::vector<cv::Point>* out)
+    {
+        PyArrayObject* pResArray;
+        import_array();
+        PyArray_OutputConverter(obj, &pResArray);
+
+        if (pResArray == NULL)
+            return false;
+
+        out->resize(PyArray_SHAPE(pResArray)[0]);
+        std::memcpy(out->data(), PyArray_DATA(pResArray), sizeof(int) * PyArray_SIZE(pResArray));
+
+        return (out->size() > 0);
     }
 }
