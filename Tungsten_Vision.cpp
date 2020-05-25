@@ -78,18 +78,18 @@ bool RsCamera::SetFeatures(int enable_features)
 
 bool RsCamera::Initialize()
 {
-    m_sWindowName = StringFormat("RealSense Streaming (%dx%d, 30fps)", m_iRes_width, m_iRes_height);
+    m_sWindowName = StringFormat("RealSense Streaming (%dx%d, 60fps)", m_iRes_width, m_iRes_height);
 
     try {
         // Enable to support the features.
         if (m_Features & ColorStream)
         {
-            m_rsConfig.enable_stream(RS2_STREAM_COLOR, m_iRes_width, m_iRes_height, RS2_FORMAT_BGR8, 30);
+            m_rsConfig.enable_stream(RS2_STREAM_COLOR, m_iRes_width, m_iRes_height, RS2_FORMAT_BGR8, 60);
             std::cout << "[RsCamera::InitializeEnvironment] Color Stream Enabled.\n";
         }
         if (m_Features & DepthStream)
         {
-            m_rsConfig.enable_stream(RS2_STREAM_DEPTH, m_iRes_width, m_iRes_height, RS2_FORMAT_Z16, 30);
+            m_rsConfig.enable_stream(RS2_STREAM_DEPTH, m_iRes_width, m_iRes_height, RS2_FORMAT_Z16, 60);
             std::cout << "[RsCamera::InitializeEnvironment] Depth Stream Enabled.\n";
         }
         if (m_Features & LInfraredStream)
@@ -317,6 +317,9 @@ void RsCamera::StartStreaming(RsCamera* rscam)
     }
     rscam->m_eState = Status::Ready;
 
+    unsigned int fm_count = 0;
+    clock_t start_t = clock();
+
     do
     {
         try
@@ -339,6 +342,17 @@ void RsCamera::StartStreaming(RsCamera* rscam)
             std::cout << e.what() << std::endl;
             rscam->m_eState = Status::Error;
             break;
+        }
+
+        fm_count++;
+        clock_t end_t = clock();
+        clock_t during = end_t - start_t;
+
+        if (during >= 1000)
+        {
+            rscam->m_fStreamingFPS = (float)fm_count / during * 1000;
+            fm_count = 0;
+            start_t = end_t;
         }
     }
     while (rscam->m_eState == Status::Streaming || rscam->m_eState == Status::Ready);
@@ -409,6 +423,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     cv::namedWindow(windowName, cv::WINDOW_AUTOSIZE);
 
     cv::setMouseCallback(windowName, WndMouseCallBack, NULL);
+    py::func* py_update_frame = new py::func("eval", "evalnumpy");
     //py::func* py_update_frame = new py::func("Streaming", "update_frame");
 
     std::cout << "[WndProc] Streaming: stream_type(" << (int)stream_type << "), windowName(" << windowName << ")" << endl;
@@ -429,6 +444,9 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
     }
     else
     {
+        unsigned int fm_count = 0;
+        clock_t start_t = clock();
+
         while (getWindowProperty(windowName, WND_PROP_AUTOSIZE) >= 0)
         {
             if (rscam->m_eState == Status::Ready)
@@ -464,13 +482,14 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
             }
             const int w = fm.as<video_frame>().get_width();
             const int h = fm.as<video_frame>().get_height();
+            
+            Mat proc(Size(w, h), rendType, (void*)fm.get_data(), Mat::AUTO_STEP);
 
-            Mat img(Size(w, h), rendType, (void*)fm.get_data(), Mat::AUTO_STEP);
+            PyObject* pRes = py_update_frame->call(py::ParseNumpy8UC3(proc));
+            Py_XDECREF(pRes);
 
-            /*PyObject* pRes = py_update_frame->call(py::ParseNumpy8UC3(img));
-            Py_DECREF(pRes);*/
-
-            //StreamingOnPython(img);
+            Mat img;
+            proc.copyTo(img);
 
             if (rec)
             {
@@ -478,7 +497,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                 static int active_time_rec = time(0);
                 char fn_rec[64] = { 0 };
                 snprintf(fn_rec, 64, "C:/realsense_rec/%d_%d.png", count_rec, active_time_rec);
-                imwrite(fn_rec, img);
+                imwrite(fn_rec, proc);
                 count_rec++;
             }
 
@@ -486,8 +505,8 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
             //    CircleDetection(img);
             if (g_pWndPoint != NULL)
             {
-                line(img, Point(0, g_pWndPoint->y), Point(img.cols, g_pWndPoint->y), Scalar(0, 0, 255), 1, cv::LINE_4);
-                line(img, Point(g_pWndPoint->x, 0), Point(g_pWndPoint->x, img.rows), Scalar(0, 0, 255), 1, cv::LINE_4);
+                line(img, Point(0, g_pWndPoint->y), Point(img.cols, g_pWndPoint->y), Scalar(38, 194, 237), 1, cv::LINE_4);
+                line(img, Point(g_pWndPoint->x, 0), Point(g_pWndPoint->x, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
 
                 TgPoint vision = parseVisionCoordinate(*g_pWndPoint, img);
                 TgWorld world = parseWorldCoordinate(vision);
@@ -496,14 +515,19 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                 char worldPosition[32];
                 sprintf_s(visionPosition, "vision(%d, %d)", vision.X(), vision.Y());
                 sprintf_s(worldPosition,  "world(%.3f, %.3f)", world.X(),  world.Y());
-                cv::putText(img, visionPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 30), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(0, 0, 255));
-                cv::putText(img, worldPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 10), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(0, 0, 255));
+                cv::putText(img, visionPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 30), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237));
+                cv::putText(img, worldPosition, cv::Point(g_pWndPoint->x + 10, g_pWndPoint->y - 10), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237));
             }
             else
             {
-                line(img, Point(0, img.rows / 2), Point(img.cols, img.rows / 2), Scalar(0, 0, 255), 1, cv::LINE_4);
-                line(img, Point(img.cols / 2, 0), Point(img.cols / 2, img.rows), Scalar(0, 0, 255), 1, cv::LINE_4);
+                line(img, Point(0, img.rows / 2), Point(img.cols, img.rows / 2), Scalar(38, 194, 237), 1, cv::LINE_4);
+                line(img, Point(img.cols / 2, 0), Point(img.cols / 2, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
             }
+
+            char fpsStr[64];
+            sprintf_s(fpsStr, "Proc FPS: %.2f | FPS: %.2f", rscam->m_fImshowFPS, rscam->m_fStreamingFPS);
+            cv::putText(img, fpsStr, cv::Point(20, 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(0, 0, 0), 2);
+            cv::putText(img, fpsStr, cv::Point(20, 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, Scalar(38, 194, 237), 1);
 
             cv::imshow(windowName, img);
             int key = waitKey(1);
@@ -522,13 +546,24 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                     static int active_time = time(0);
                     char fn[64] = { 0 };
                     snprintf(fn, 64, "C:/realsense_pic/%d_%d.png", active_time, count);
-                    bool res = imwrite(fn, img);
+                    bool res = imwrite(fn, proc);
                     if (res)
                     {
                         std::cout << "[Save] \"" << fn << "\"(" << count++ << ")" << endl;
                     }
                     break;
                 }
+            }
+
+            fm_count++;
+            clock_t end_t = clock();
+            clock_t during = end_t - start_t;
+
+            if (during >= 1000)
+            {
+                rscam->m_fImshowFPS = (float)fm_count / during * 1000;
+                fm_count = 0;
+                start_t = end_t;
             }
         }
     }

@@ -115,10 +115,10 @@ def parse_args(argv=None):
     parser.set_defaults(no_bar=False, display=False, resume=False, output_coco_json=False, output_web_json=False, shuffle=False,
                         benchmark=False, no_sort=False, no_hash=False, mask_proto_debug=False, crop=True, detect=False, display_fps=False,
                         emulate_playback=False)
-#%%
+#%%    
     global args
     args = parser.parse_args(argv)
-
+    
     if args.output_web_json:
         args.output_coco_json = True
     
@@ -131,6 +131,7 @@ coco_cats_inv = {}
 color_cache = defaultdict(lambda: {})
 
 def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, mask_alpha=0.45, fps_str=''):
+    global color_mask, where
     """
     Note: If undo_transform=False then im_h and im_w are allowed to be None.
     """
@@ -155,6 +156,15 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
         if cfg.eval_mask_branch:
             # Masks are drawn on the GPU, so don't copy
             masks = t[3][idx]
+            color = masks
+            color_mask = color.cpu().numpy()
+            # color_mask = color_mask.transpose(1, 2, 0)
+            # color_mask = cv2.cvtColor(color_mask, cv2.COLOR_BGR2GRAY)
+            # where = np.argwhere(color_mask > 0)
+            # for i in range(where.shape[0]):
+            #     change = where[i]
+            #     color_mask[change[0], change[1]] = 255
+            
         classes, scores, boxes = [x[idx].cpu().numpy() for x in t[:3]]
 
     num_dets_to_consider = min(args.top_k, classes.shape[0])
@@ -255,8 +265,14 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
 
                 cv2.rectangle(img_numpy, (x1, y1), (x1 + text_w, y1 - text_h - 4), color, -1)
                 cv2.putText(img_numpy, text_str, text_pt, font_face, font_scale, text_color, font_thickness, cv2.LINE_AA)
-            
-    
+    # color_mask = np.clip(color_mask, 0, 255)
+    # color_mask=np.array(color_mask, np.uint8)
+    # _,contours,hierarchy= cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)            
+    # for cont in contours:
+    #     M=cv2.moments(cont)
+    #     cX= int(M["m10"] / M["m00"])
+    #     cY= int(M["m01"]/ M["m00"])
+    #     print(cX,cY,end="  ")
     return img_numpy
 
 def prep_benchmark(dets_out, h, w):
@@ -590,7 +606,9 @@ def badhash(x):
     x =  ((x >> 16) ^ x) & 0xFFFFFFFF
     return x
 #%%
+#--trained_model=weights/yolact_base_159_16000.pth --score_threshold=0.15 --top_k=15 --image=valid/json/image0274.png:valid/json/imagefinal.jpg
 def evalimage(net:Yolact, path:str, save_path:str=None):
+    global color_mask,where
     frame = torch.from_numpy(cv2.imread(path)).cuda().float()
     batch = FastBaseTransform()(frame.unsqueeze(0))
     preds = net(batch)
@@ -606,7 +624,21 @@ def evalimage(net:Yolact, path:str, save_path:str=None):
         plt.show()
     else:
         cv2.imwrite(save_path, img_numpy)
-
+    color_mask = np.clip(color_mask, 0, 255)
+    color_mask=np.array(color_mask, np.uint8)
+    _,contours,hierarchy= cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+   #cv2.drawContours(color_mask,contours,-1,(120,0,0),5)
+    count=0
+    for cont in contours:
+        M=cv2.moments(cont)
+        cX= int(M["m10"] / M["m00"])
+        cY= int(M["m01"]/ M["m00"])
+        cv2.circle(color_mask,(cX,cY),4,(140,199,0),-1)
+        ares = cv2.contourArea(cont)
+        count+=1 
+        print("{}-Block面積:{},{},{}".format(count,ares,cX,cY),end="  ")
+    cv2.imshow('123',color_mask)
+    cv2.waitKey(0)
 def evalimages(net:Yolact, input_folder:str, output_folder:str):
     if not os.path.exists(output_folder):
         os.mkdir(output_folder)
@@ -631,7 +663,9 @@ class CustomDataParallel(torch.nn.DataParallel):
         # Note that I don't actually want to convert everything to the output_device
         return sum(outputs, [])
 #%%
+#--trained_model=weights/yolact_base_159_16000.pth --score_threshold=0.15 --top_k=15 --video_multiframe=4 --video=1
 def evalvideo(net:Yolact, path:str, out_path:str=None):
+   
     # If the path is a digit, parse it as a webcam index
     is_webcam = path.isdigit()
     
@@ -706,14 +740,15 @@ def evalvideo(net:Yolact, path:str, out_path:str=None):
 
     def prep_frame(inp, fps_str):
         with torch.no_grad():
-            frame, preds = inp
+            frame, preds = inp 
             return prep_display(preds, frame, None, None, undo_transform=False, class_color=True, fps_str=fps_str)
 
     frame_buffer = Queue()
     video_fps = 0
-
+    
     # All this timing code to make sure that 
     def play_video():
+        global color_mask,where
         try:
             nonlocal frame_buffer, running, video_fps, is_webcam, num_frames, frames_displayed, vid_done
 
@@ -722,10 +757,9 @@ def evalvideo(net:Yolact, path:str, out_path:str=None):
             last_time = None
             stabilizer_step = 0.0005
             progress_bar = ProgressBar(30, num_frames)
-
             while running:
                 frame_time_start = time.time()
-
+                #_,contours,hierarchy= cv2.findContours(color_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)                
                 if not frame_buffer.empty():
                     next_time = time.time()
                     if last_time is not None:
@@ -1041,65 +1075,271 @@ def print_maps(all_maps):
         print(make_row([iou_type] + ['%.2f' % x if x < 100 else '%.1f' % x for x in all_maps[iou_type].values()]))
     print(make_sep(len(all_maps['box']) + 1))
     print()
+ 
+def prep_display2(dets_out, img, h, w, undo_transform=True, class_color=False, mask_alpha=0.45, fps_str=''):
+    top_k = 15
+    sth = 0.15
+    """
+    Note: If undo_transform=False then im_h and im_w are allowed to be None.
+    """
+    if undo_transform:
+        img_numpy = undo_image_transformation(img, w, h)
+        img_gpu = torch.Tensor(img_numpy).cuda()
+    else:
+        img_gpu = img / 255.0
+        h, w, _ = img.shape
+    
+    with timer.env('Postprocess'):
+        save = cfg.rescore_bbox
+        cfg.rescore_bbox = True
+        t = postprocess(dets_out, w, h, visualize_lincomb = False, #args.display_lincomb,
+                                        crop_masks        = True, #args.crop,
+                                        score_threshold   = sth) #args.score_threshold)
+        cfg.rescore_bbox = save
 
-
-
-if __name__ == '__main__':
-    parse_args()
-
-    if args.config is not None:
-        set_cfg(args.config)
-
-    if args.trained_model == 'interrupt':
-        args.trained_model = SavePath.get_interrupt('weights/')
-    elif args.trained_model == 'latest':
-        args.trained_model = SavePath.get_latest('weights/', cfg.name)
-
-    if args.config is None:
-        model_path = SavePath.from_str(args.trained_model)
-        # TODO: Bad practice? Probably want to do a name lookup instead.
-        args.config = model_path.model_name + '_config'
-        print('Config not specified. Parsed %s from the file name.\n' % args.config)
-        set_cfg(args.config)
-
-    if args.detect:
-        cfg.eval_mask_branch = False
-
-    if args.dataset is not None:
-        set_dataset(args.dataset)
-
-    with torch.no_grad():
-        if not os.path.exists('results'):
-            os.makedirs('results')
-
-        if args.cuda:
-            cudnn.fastest = True
-            torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    with timer.env('Copy'):
+        idx = t[1].argsort(0, descending=True)[:top_k] #args.top_k
+        
+        if cfg.eval_mask_branch:
+            # Masks are drawn on the GPU, so don't copy
+            masks = t[3][idx]
+            color_mask = masks.cpu().detach().numpy()
         else:
-            torch.set_default_tensor_type('torch.FloatTensor')
+            color_mask = None
+            
+        classes, scores, boxes = [x[idx].cpu().detach().numpy() for x in t[:3]]
 
-        if args.resume and not args.display:
-            with open(args.ap_data_file, 'rb') as f:
-                ap_data = pickle.load(f)
-            calc_map(ap_data)
-            exit()
+    num_dets_to_consider = min(top_k, classes.shape[0])
+    for j in range(num_dets_to_consider):
+        if scores[j] < sth:
+            num_dets_to_consider = j
+            break
 
-        if args.image is None and args.video is None and args.images is None:
-            dataset = COCODetection(cfg.dataset.valid_images, cfg.dataset.valid_info,
-                                    transform=BaseTransform(), has_gt=cfg.dataset.has_gt)
-            prep_coco_cats()
+    # Quick and dirty lambda for selecting the color for a particular index
+    # Also keeps track of a per-gpu color cache for maximum speed
+    def get_color(j, on_gpu=None):
+        global color_cache
+        color_idx = (classes[j] * 5 if class_color else j * 5) % len(COLORS)
+        
+        if on_gpu is not None and color_idx in color_cache[on_gpu]:
+            return color_cache[on_gpu][color_idx]
         else:
-            dataset = None        
+            color = COLORS[color_idx]
+            if not undo_transform:
+                # The image might come in as RGB or BRG, depending
+                color = (color[2], color[1], color[0])
+            if on_gpu is not None:
+                color = torch.Tensor(color).to(on_gpu).float() / 255.
+                color_cache[on_gpu][color_idx] = color
+            return color
 
-        print('Loading model...', end='')
-        net = Yolact()
-        net.load_weights(args.trained_model)
-        net.eval()
-        print(' Done.')
+    # First, draw the masks on the GPU where we can do it really fast
+    # Beware: very fast but possibly unintelligible mask-drawing code ahead
+    # I wish I had access to OpenGL or Vulkan but alas, I guess Pytorch tensor operations will have to suffice
+    
+    if cfg.eval_mask_branch and num_dets_to_consider > 0:
+        # After this, mask is of size [num_dets, h, w, 1]
+        masks = masks[:num_dets_to_consider, :, :, None]
+        
+        # Prepare the RGB images for each mask given their color (size [num_dets, h, w, 1])
+        colors = torch.cat([get_color(j, on_gpu=img_gpu.device.index).view(1, 1, 1, 3) for j in range(num_dets_to_consider)], dim=0)
+        masks_color = masks.repeat(1, 1, 1, 3) * colors * mask_alpha
 
-        if args.cuda:
-            net = net.cuda()
+        # This is 1 everywhere except for 1-mask_alpha where the mask is
+        inv_alph_masks = masks * (-mask_alpha) + 1
+        
+        # I did the math for this on pen and paper. This whole block should be equivalent to:
+        #    for j in range(num_dets_to_consider):
+        #        img_gpu = img_gpu * inv_alph_masks[j] + masks_color[j]
+        masks_color_summand = masks_color[0]
+        if num_dets_to_consider > 1:
+            inv_alph_cumul = inv_alph_masks[:(num_dets_to_consider-1)].cumprod(dim=0)
+            masks_color_cumul = masks_color[1:] * inv_alph_cumul
+            masks_color_summand += masks_color_cumul.sum(dim=0)
 
-        evaluate(net, dataset)
+        img_gpu = img_gpu * inv_alph_masks.prod(dim=0) + masks_color_summand
+    
+    # Then draw the stuff that needs to be done on the cpu
+    # Note, make sure this is a uint8 tensor or opencv will not anti alias text for whatever reason
+    img_numpy = (img_gpu * 255).byte().cpu().numpy()
+
+    if num_dets_to_consider == 0:
+        return img_numpy
+
+    for j in reversed(range(num_dets_to_consider)):
+        x1, y1, x2, y2 = boxes[j, :]
+        color = get_color(j)
+        score = scores[j]
+
+        cv2.rectangle(img_numpy, (x1, y1), (x2, y2), color, 1)
+
+        _class = cfg.dataset.class_names[classes[j]]
+        text_str = '%s: %.2f' % (_class, score) if True else _class
+
+        font_face = cv2.FONT_HERSHEY_DUPLEX
+        font_scale = 0.6
+        font_thickness = 1
+
+        text_w, text_h = cv2.getTextSize(text_str, font_face, font_scale, font_thickness)[0]
+
+        text_pt = (x1, y1 - 3)
+        text_color = [255, 255, 255]
+
+        cv2.rectangle(img_numpy, (x1, y1), (x1 + text_w, y1 - text_h - 4), color, -1)
+        cv2.putText(img_numpy, text_str, text_pt, font_face, font_scale, text_color, font_thickness, cv2.LINE_AA)
+        
+    #img_numpy = img_numpy[:, :, (0, 1, 2)]
+    img_numpy = np.ascontiguousarray(img_numpy, dtype=np.uint8)
+    
+    if np.sum(color_mask) != 0:
+        [obj, img_h, img_w] = color_mask.shape
+        for cont in range(obj):
+            M=cv2.moments(color_mask[cont])
+            if M["m00"] > 0:
+                cX= int(M["m10"] / M["m00"])
+                cY= int(M["m01"] / M["m00"])
+                cv2.circle(img_numpy, (cX,cY),4,(140,199,0),-1)
+                cetstr = '(%d, %d)' % (cX, cY)
+                cv2.putText(img_numpy, cetstr, (cX,cY), cv2.FONT_HERSHEY_DUPLEX, 0.5, (140,199,0), 1, cv2.LINE_AA)
+
+    return img_numpy
+
+# valid/json/image0274.png
+def evalnumpy(img):
+    # global img_numpy
+    # Todo: passed image(numpy) from parameter.
+    
+    frame = torch.from_numpy(img).cuda().float()
+    batch = FastBaseTransform()(frame.unsqueeze(0))
+    preds = net(batch)
+    
+    img_numpy = prep_display2(preds, frame, None, None, undo_transform=False)
+    cv2.imshow('Yolact Predict', img_numpy)
+    # global contours
+    
+    # _, contours, hierarchy = cv2.findContours(detected_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # for cont in contours:
+    #     M=cv2.moments(cont)
+    #     cX= int(M["m10"] / M["m00"])
+    #     cY= int(M["m01"] / M["m00"])
+    #     cv2.circle(detected_mask, (cX,cY),4,(140,199,0),-1)
+    
+    # cv2.imshow('detect', detected_mask)
+    
+    return 0
+# import sys
+# sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\python36.zip')
+# sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\DLLs')
+# sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib')
+# sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch')
+# sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages')
+# sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages\\win32')
+# sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages\\win32\\lib')
+# sys.path.append('C:\\Users\\U0611205\\.conda\\envs\\pytorch\\lib\\site-packages\\Pythonwin')
+
+#parse_args()
+set_cfg('yolact_base_config')
+cudnn.fastest = True
+torch.set_default_tensor_type('torch.cuda.FloatTensor')
+
+#print('Loading model...', end='')
+net = Yolact()
+net.load_weights(r'C:\Source\Tungsten\x64\Debug\yolact_base_59_16000.pth')
+net.eval()
+#print(' Done.')
+
+net = net.cuda()
+# net = CustomDataParallel(net).cuda()
+transform = torch.nn.DataParallel(FastBaseTransform()).cuda()
+
+#evaluate(net, None)
+net.detect.use_fast_nms = True #args.fast_nms
+net.detect.use_cross_class_nms = False #args.cross_class_nms
+cfg.mask_proto_debug = False #args.mask_proto_debug
+
+cv2.startWindowThread()
+# cap = cv2.VideoCapture(0)
+# 
+# frame_num = 0
+# start = time.time()
+# 
+# while(True):
+#   ret, frame = cap.read()
+#   cvret = 0;
+#   if np.sum(frame) != 0:
+#     cvret = evalnumpy(frame)
+#   if cvret & 0xFF == ord('q'):
+#     break
+#   end = time.time()
+#   seconds = end - start
+#   if seconds <= 1:
+#       frame_num += 1
+#   else:
+#       fps = frame_num;
+#       print('\rFPS %d' % (fps), end='')
+#       frame_num = 0
+#       start = end
+
+# cap.release()
+# cv2.destroyAllWindows()
+
+# if __name__ == '__main__':
+#     parse_args()
+    
+#     if args.config is not None:
+#         set_cfg(args.config)
+
+#     if args.trained_model == 'interrupt':
+#         args.trained_model = SavePath.get_interrupt('weights/')
+#     elif args.trained_model == 'latest':
+#         args.trained_model = SavePath.get_latest('weights/', cfg.name)
+
+#     if args.config is None:
+#         model_path = SavePath.from_str(args.trained_model)
+#         # TODO: Bad practice? Probably want to do a name lookup instead.
+#         args.config = model_path.model_name + '_config'
+#         print('Config not specified. Parsed %s from the file name.\n' % args.config)
+#         set_cfg(args.config)
+
+#     if args.detect:
+#         cfg.eval_mask_branch = False
+
+#     if args.dataset is not None:
+#         set_dataset(args.dataset)
+
+#     with torch.no_grad():
+#         if not os.path.exists('results'):
+#             os.makedirs('results')
+
+#         if args.cuda:
+#             cudnn.fastest = True
+#             torch.set_default_tensor_type('torch.cuda.FloatTensor')
+#         else:
+#             torch.set_default_tensor_type('torch.FloatTensor')
+
+#         if args.resume and not args.display:
+#             with open(args.ap_data_file, 'rb') as f:
+#                 ap_data = pickle.load(f)
+#             calc_map(ap_data)
+#             exit()
+
+#         if args.image is None and args.video is None and args.images is None:
+#             dataset = COCODetection(cfg.dataset.valid_images, cfg.dataset.valid_info,
+#                                     transform=BaseTransform(), has_gt=cfg.dataset.has_gt)
+#             prep_coco_cats()
+#         else:
+#             dataset = None        
+
+#         print('Loading model...', end='')
+#         net = Yolact()
+#         net.load_weights(args.trained_model)
+#         net.eval()
+#         print(' Done.')
+
+#         if args.cuda:
+#             net = net.cuda()
+#         print(args)
+#         evaluate(net, dataset)
 
 

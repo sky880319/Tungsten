@@ -112,6 +112,9 @@ private:
     RsCamera_Clipper m_threshold;
     rs2::frameset m_frameset;
 
+    float m_fStreamingFPS;
+    float m_fImshowFPS;
+
     ScRobot* m_scrbt;
 
     ObjectQueue* m_pTgObjQueue;

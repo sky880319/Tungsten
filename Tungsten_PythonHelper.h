@@ -12,6 +12,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 #include <opencv2/opencv.hpp>
+#include <mutex>
 
 namespace py {
     void init();
@@ -29,8 +30,13 @@ namespace py {
         PyObject* module;
         PyObject* function;
         PyObject* dict;
+
+        PyGILState_STATE gstate;
+        std::mutex m_Mutex;
     };
 
     PyObject* ParseNumpy8UC3(cv::Mat& mat);
 }
+
+#define Py_END_ALLOW_THREADS
 #endif
