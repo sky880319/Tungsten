@@ -129,8 +129,13 @@ namespace py
         return pArgs;
     }
 
-    bool py::ParsePointVector(PyObject* obj, std::vector<cv::Point>* out)
+    bool py::ParsePointVector(PyObject* obj, std::vector<py::obj_info>* out)
     {
+        if (!obj)
+        {
+            return false;
+        }
+
         PyArrayObject* pResArray;
         import_array();
         PyArray_OutputConverter(obj, &pResArray);

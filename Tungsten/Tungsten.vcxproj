@@ -40,6 +40,8 @@
     <ClCompile Include="..\Tungsten_Vision.cpp" />
     <ClCompile Include="..\Tungsten_Motion.cpp" />
     <ClCompile Include="..\Tungsten.cpp" />
+    <ClCompile Include="TungstenProgram_PushObject.cpp" />
+    <ClCompile Include="TungstenProgram_SuckObject.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Tungsten_Define.h" />
@@ -47,6 +49,8 @@
     <ClInclude Include="..\Tungsten_Vision.h" />
     <ClInclude Include="..\Tungsten_Motion.h" />
     <ClInclude Include="..\Tungsten.h" />
+    <ClInclude Include="TungstenProgram_PushObject.h" />
+    <ClInclude Include="TungstenProgram_SuckObject.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

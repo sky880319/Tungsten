@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Tungsten_Program">
+      <UniqueIdentifier>{ab7541c2-0202-48a2-abdd-5add95d9db9a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\Tungsten.cpp">
@@ -30,6 +33,12 @@
     <ClCompile Include="..\Tungsten_Define.cpp">
       <Filter>來源檔案</Filter>
     </ClCompile>
+    <ClCompile Include="TungstenProgram_SuckObject.cpp">
+      <Filter>Tungsten_Program</Filter>
+    </ClCompile>
+    <ClCompile Include="TungstenProgram_PushObject.cpp">
+      <Filter>Tungsten_Program</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Tungsten.h">
@@ -46,6 +55,12 @@
     </ClInclude>
     <ClInclude Include="..\Tungsten_Define.h">
       <Filter>標頭檔</Filter>
+    </ClInclude>
+    <ClInclude Include="TungstenProgram_SuckObject.h">
+      <Filter>Tungsten_Program</Filter>
+    </ClInclude>
+    <ClInclude Include="TungstenProgram_PushObject.h">
+      <Filter>Tungsten_Program</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

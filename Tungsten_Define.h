@@ -8,27 +8,29 @@
 #include <opencv2/opencv.hpp>
 #include <mutex>
 #include <condition_variable>
+#include <windows.h>
 
+#define _PUSH_MODE_
 #define UNIT_TRANSFORM    100000
 //#define PEXEL2MM_FACTOR_X -0.552219354839f
 //#define PEXEL2MM_FACTOR_Y -0.551948051948f
-#define PEXEL2MM_FACTOR_X -0.4702967033f
-#define PEXEL2MM_FACTOR_Y -0.4702967033f
-#define VISION_COOR_RAD   -0.013071150953f
-#define VISION_COOR_X     -487.878787f
-#define VISION_COOR_Y           -1.50f
+#define PEXEL2MM_FACTOR_X -0.4728690791f
+#define PEXEL2MM_FACTOR_Y -0.4783414610f
+#define VISION_COOR_RAD   -0.020271658648131453f
+#define VISION_COOR_X			-448.f
+#define VISION_COOR_Y           -3.04f
 #define VISION_COOR_Z			 337.f
-#define HOME_X               -100.889f
-#define HOME_Y                457.756f
+#define HOME_X               -143.800f
+#define HOME_Y                392.758f
 #define HOME_Z                 74.955f
 #define OBJECT_SPEED           156.25f
 #define ROBOT_SPEED       150.7494232f
-#define WORKING_LIMIT_X1     -20000000
-#define WORKING_LIMIT_Y1      31725600
-#define WORKING_LIMIT_X2       9481700
-#define WORKING_LIMIT_Y2      57525400
-#define WORKING_LIMIT_Z1       8000000
-#define WORKING_LIMIT_Z2      19680000
+#define WORKING_LIMIT_X1     -29780200
+#define WORKING_LIMIT_Y1      25065400
+#define WORKING_LIMIT_X2      31539700
+#define WORKING_LIMIT_Y2      51085500
+#define WORKING_LIMIT_Z1       9000000
+#define WORKING_LIMIT_Z2      18500000
 
 struct TgWorld;
 struct TgPoint {
@@ -72,6 +74,7 @@ protected:
 struct TgWorld : TgPoint {
 public:
 	friend class ScRobot;
+	friend class TungstenProgram_Base;
 	TgWorld() : TgPoint(0, 0, 0), c(0) {}
 
 	// Construct TgWorld by 4-axis absolute coordinate by integer.
@@ -145,12 +148,39 @@ private:
 TgPoint parseVisionCoordinate(const cv::Point& img_point, const cv::Mat& img, float meter_depth);
 TgWorld parseWorldCoordinate(TgPoint& vision_position);
 
+enum TgObject_Type
+{
+	Suck = 1,
+	Push = 2,
+};
+enum Side
+{
+	None,
+	Left,
+	Center,
+	Right
+};
+
 typedef std::chrono::time_point<std::chrono::steady_clock> time_pt;
 struct TgObject
 {
-	// Todo: To find a better way to save time (ms).
-	//		 Provide a function to get the expected location .current time.
-	TgObject(unsigned long oid, const TgWorld& point) : oid(oid), time(std::chrono::steady_clock::now()), vision_point(point) {}
+	TgObject(unsigned long oid, TgObject_Type type, const TgWorld& center, const TgWorld& box_pt1, const TgWorld& box_pt2) : 
+		oid(oid), 
+		type(type),
+		side(Side::None),
+		time(std::chrono::steady_clock::now()), 
+		vision_point(center),
+		box_pt1(box_pt1),
+		box_pt2(box_pt2) {  }
+
+	TgObject(unsigned long oid, TgObject_Type type, Side side, time_pt time, const TgWorld& center, const TgWorld& box_pt1, const TgWorld& box_pt2) :
+		oid(oid),
+		type(type),
+		side(side),
+		time(time),
+		vision_point(center),
+		box_pt1(box_pt1),
+		box_pt2(box_pt2) {  }
 
 	template <class T>
 	long long getDuration(time_pt now)
@@ -164,18 +194,33 @@ struct TgObject
 		exp_location.setX(vision_point.X() + (float)getDuration<std::chrono::milliseconds>(now) * OBJECT_SPEED / 1000);
 		return exp_location;
 	}
-	/*std::string getTimeString()
-	{
-		std::chrono::system_clock::to_time_t(time);
-	}*/
 
 	const unsigned long oid;
-	//const clock_t		time;
+	const TgObject_Type type;
+	const Side			side;
 	const time_pt		time;
 	TgWorld				vision_point;
+	TgWorld				box_pt1;
+	TgWorld				box_pt2;
 };
 
-
 typedef std::queue<TgObject*> ObjectQueue;
+
+class TungstenProgram_Base
+{
+public:
+	TungstenProgram_Base() : m_progNum(0), m_sessionIdx(0) {  }
+	TungstenProgram_Base(int progNum, int sessionIdx) : m_progNum(progNum), m_sessionIdx(sessionIdx) {  }
+	~TungstenProgram_Base() { StopProc(); }
+
+	virtual bool RunProc() { return false; }
+	virtual bool StopProc() { return false; }
+	virtual bool SetProc(const TgWorld& ref) { return false; }
+	virtual int  getProgNum() { return m_progNum; }
+
+private:
+	int m_progNum;
+	int m_sessionIdx;
+};
 
 #endif

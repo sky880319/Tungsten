@@ -14,6 +14,7 @@
 #include <librealsense2/rs.hpp>
 #include "Tungsten_Motion.h"
 #include "Tungsten_Define.h"
+#include "Tungsten_PythonHelper.h"
 
 #define SAFE_DELETE(pPtr) { delete pPtr; pPtr = NULL; }
 
@@ -137,7 +138,8 @@ inline Features& operator--(Features & state, int)
 
 void CircleDetection(cv::Mat& img, ScRobot* scrbt);
 void WndMouseCallBack(int event, int x, int y, int flags, void* userdata);
-bool PointY_Cmp(cv::Point& p1, cv::Point& p2);
-int GetROIObjPoint_Axis_Y(std::vector<cv::Point>* points, int upper, int lower);
+bool PointY_Cmp(py::obj_info& obj1, py::obj_info& obj2);
+Side GetObjectSide(py::obj_info& obj1);
+int GetROIObjPoint_Axis_Y(std::vector<py::obj_info>* obj, int upper, int lower);
 
 #endif

@@ -1207,20 +1207,30 @@ def prep_display2(dets_out, img, h, w, undo_transform=True, class_color=False, m
 
     if num_dets_to_consider == 0:
         return None
-    
+
     if np.sum(color_mask) != 0:
         # Find the count of mask, and each size.
         # Create a np array to save centroid position.
         [obj, img_h, img_w] = color_mask.shape
-        cntr_pos = np.zeros([obj, 2], dtype='int32')
+        
+        if obj != num_dets_to_consider:
+            return None;
+        
+        cntr_pos = np.zeros([obj, 7], dtype='int32')
         
         for cont in range(obj):
             M=cv2.moments(color_mask[cont])
             if M["m00"] > 0:
                 cX= int(M["m10"] / M["m00"])
                 cY= int(M["m01"] / M["m00"])
-                cntr_pos[cont, 0] = cX
-                cntr_pos[cont, 1] = cY
+                
+                cntr_pos[cont, 0] = M["m00"]
+                cntr_pos[cont, 1] = cX
+                cntr_pos[cont, 2] = cY
+
+        for j in range(num_dets_to_consider):
+            cntr_pos[j, 3], cntr_pos[j, 4], cntr_pos[j, 5], cntr_pos[j, 6] = boxes[j, :]
+        
         return cntr_pos
     
     return None

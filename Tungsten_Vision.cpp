@@ -1,6 +1,5 @@
 #include "Tungsten_Vision.h"
 #include <fstream>
-#include "Tungsten_PythonHelper.h"
 #include "Tungsten_Motion.h"
 #pragma warning(disable: 26444)
 #pragma warning(disable: 4996)
@@ -465,6 +464,17 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
         unsigned int fm_count = 0;
         clock_t start_t = clock();
 
+#ifdef _PUSH_MODE_
+        static py::obj_info* side_closed = nullptr;
+        static py::obj_info* header_obj = nullptr;
+
+        static Side side = Side::None;
+        static int max_left = 250, max_right = 390;
+
+        static bool alarm = false;
+        static time_pt header_discover_time;
+#endif
+
         while (getWindowProperty(windowName, WND_PROP_AUTOSIZE) >= 0)
         {
             if (rscam->m_eState == Status::Ready)
@@ -506,7 +516,8 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
             if (ColorStream == stream_type)
             {
                 depth_frame dptfm = fms.get_depth_frame();
-                PyObject* pRes = pyEvalnumpy->call(py::ParseNumpy8UC3(proc));
+                PyObject* pRes = nullptr;
+                pRes = pyEvalnumpy->call(py::ParseNumpy8UC3(proc));
 
                 Mat img;
                 proc.copyTo(img);
@@ -539,39 +550,144 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                 //img = img(cv::Rect(0, (img.rows / 2)-100, 640, 200));
 
                 // Showing object center position from yolact result.
-                std::vector<cv::Point> vecPoints;
-                if (py::ParsePointVector(pRes, &vecPoints))
-                {
-                    std::sort(vecPoints.begin(), vecPoints.end(), PointY_Cmp);
-                    int roi_objnum = GetROIObjPoint_Axis_Y(&vecPoints, 270, 0); // 375, 105
 
+                std::vector<py::obj_info*> problem_obj;
+                std::vector<py::obj_info> vecObjInf;
+                if (py::ParsePointVector(pRes, &vecObjInf))
+                {
                     Scalar color = Scalar(227, 182, 0);
-                    cv::Point* roi_obj = nullptr;
+                    py::obj_info* roi_obj = nullptr;
+
+                    // from last to front.
+                    std::sort(vecObjInf.begin(), vecObjInf.end(), PointY_Cmp);
+                    
+#ifdef _PUSH_MODE_
+                    //// Z = 89.5mm
+                    if (vecObjInf[0].center.y <= 300 && vecObjInf[0].center.y > 0) // Set ROI.
+                    {
+                        if (Side::Center == side || header_obj == nullptr)
+                        {
+                            /*if (header_obj != nullptr)
+                                SAFE_DELETE(header_obj);
+                            header_obj = new py::obj_info(vecObjInf[0]);*/
+                            side = GetObjectSide(vecObjInf[0]);
+                            if (Side::Left == side)
+                            {
+                                if (side_closed != nullptr)
+                                    SAFE_DELETE(side_closed);
+                                header_obj  = new py::obj_info(vecObjInf[0]);
+                                //std::cout << "header_obj construct." << std::endl;
+                                side_closed = new py::obj_info(vecObjInf[0]);
+
+                                header_discover_time = std::chrono::steady_clock::now();
+
+                                max_left = header_obj->box_pt1.x;
+                                //std::cout << header_obj->box_pt1.x << std::endl;
+                                //std::cout << "header: (" << header_obj->center.x << "," << header_obj->center.y << ")" << std::endl;
+                            }
+                            else if(Side::Right == side)
+                            {
+                                if (side_closed != nullptr)
+                                    SAFE_DELETE(side_closed);
+                                header_obj  = new py::obj_info(vecObjInf[0]);
+                                //std::cout << "header_obj construct." << std::endl;
+                                side_closed = new py::obj_info(vecObjInf[0]);
+
+                                header_discover_time = std::chrono::steady_clock::now();
+
+                                max_right = header_obj->box_pt2.x;
+                                //std::cout << header_obj->box_pt2.x << std::endl;
+                                //std::cout << "header: (" << header_obj->center.x << "," << header_obj->center.y << ")" << std::endl;
+                            }
+                        }
+                        else if (header_obj != nullptr)
+                        {
+                            for (int i = 0; i < vecObjInf.size(); i++)
+                            {
+                                Side curside = GetObjectSide(vecObjInf[i]);
+                                if (side != Side::None && curside != side && curside != Side::Center)
+                                {
+                                    problem_obj.push_back(&vecObjInf[i]);
+                                }
+                                else
+                                {
+                                    // Get the center of header object, but get box_p1, box_p2 of the closest to the border of conveyor.
+                                    if (Side::Left == side)
+                                    {
+                                        if (vecObjInf[i].box_pt1.x < max_left)
+                                        {
+                                            if (side_closed != nullptr)
+                                                SAFE_DELETE(side_closed);
+                                            side_closed = new py::obj_info(vecObjInf[i]);
+                                            max_left = vecObjInf[i].box_pt1.x;
+                                            //std::cout << vecObjInf[i].box_pt1.x << std::endl;
+                                            //std::cout << "next: (" << vecObjInf[i].center.x << "," << vecObjInf[i].center.y << ")" << std::endl;
+                                        }
+                                    }
+                                    else if (Side::Right == side)
+                                    {
+                                        if (vecObjInf[i].box_pt2.x > max_right)
+                                        {
+                                            if (side_closed != nullptr)
+                                                SAFE_DELETE(side_closed);
+                                            side_closed = new py::obj_info(vecObjInf[i]);
+                                            max_right = vecObjInf[i].box_pt2.x;
+                                            //std::cout << vecObjInf[i].box_pt2.x << std::endl;
+                                            //std::cout << "next: (" << vecObjInf[i].center.x << "," << vecObjInf[i].center.y << ")" << std::endl;
+                                        }
+                                    }
+                                }
+                            }
+                            if (problem_obj.size() > 0)
+                            {
+                                //if (header_obj != nullptr)
+                                //{
+                                //    SAFE_DELETE(header_obj);
+                                //    //std::cout << "header_obj deconstruct." << std::endl;
+                                //}
+                                alarm = true;
+                            }
+                        }
+                    }
+#elif defined _SUCK_MODE_
+                    int roi_objnum = GetROIObjPoint_Axis_Y(&vecObjInf, 270, 0); // 375, 105
 
                     if (-1 != roi_objnum)
                     {
-                        roi_obj = &vecPoints[roi_objnum];
+                        roi_obj = &vecObjInf[roi_objnum];
                         if (NULL != rscam->m_pTgObjQueue &&
                             NULL != roi_obj && 
                             wait_next_pred)
                         {
-                            // Todo: thread lock
-                            //       z axis is not transform to world space yet.
                             wait_next_pred = false;
 
+                            float dist;
+                            TgPoint vision_p;
+                            TgWorld obj_cntr, box_p1, box_p2;
+
+                            dist = dptfm.get_distance(roi_obj->center.x, roi_obj->center.y);
+                            vision_p = parseVisionCoordinate(roi_obj->center, img, dist);
+                            obj_cntr = parseWorldCoordinate(vision_p);
+
+                            dist = dptfm.get_distance(roi_obj->box_pt1.x, roi_obj->box_pt1.y);
+                            vision_p = parseVisionCoordinate(roi_obj->box_pt1, img, dist);
+                            box_p1 = parseWorldCoordinate(vision_p);
+
+                            dist = dptfm.get_distance(roi_obj->box_pt2.x, roi_obj->box_pt2.y);
+                            vision_p = parseVisionCoordinate(roi_obj->box_pt2, img, dist);
+                            box_p2 = parseWorldCoordinate(vision_p);
+
+                            TgObject* obj = new TgObject(++rscam->oid_count, TgObject_Type::Suck, obj_cntr, box_p1, box_p2);
+
                             std::unique_lock<std::mutex> lock(*rscam->m_mutex);
-
-                            //long uid = (!rscam->m_pTgObjQueue->empty()) ? rscam->m_pTgObjQueue->back()->uid + 1 : 0;
-                            
-                            TgPoint vision_p = parseVisionCoordinate(*roi_obj, img, dptfm.get_distance(roi_obj->x, roi_obj->y));
-                            TgWorld obj_p = parseWorldCoordinate(vision_p);
-
-                            TgObject* obj = new TgObject(++rscam->oid_count, obj_p);
                             rscam->m_pTgObjQueue->push(obj);
                             std::cout << "[TgObjQueue] New ROI object has been detected and pushed." << std::endl <<
-                                         "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), " << obj->vision_point << std::endl << std::endl;
+                                         "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), Type(" << obj->type << std::endl << 
+                                         "             Center: " << obj->vision_point << std::endl <<
+                                         "             Box_p1: " << obj->box_pt1 << std::endl <<
+                                         "             Box_p2: " << obj->box_pt2 << std::endl << std::endl;
 
-                            lock.unlock(); //***
+                            lock.unlock();
                             rscam->m_objQueue_cond->notify_one();
                         }
                     }
@@ -579,28 +695,91 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                     {
                         wait_next_pred = true;
                     }
+#endif
 
-                    for (std::vector<cv::Point>::iterator iter = vecPoints.begin(); iter != vecPoints.end(); ++iter)
+                    for (std::vector<py::obj_info>::iterator iter = vecObjInf.begin(); iter != vecObjInf.end(); ++iter)
                     {
                         if (&(*iter) == roi_obj)
                         {
                             color = Scalar(117, 117, 255);
                         }
+                        else if (std::find(problem_obj.begin(), problem_obj.end(), &*iter) != problem_obj.end())
+                        {
+                            color = Scalar(38, 194, 237);
+                        }
                         else
                         {
                             color = Scalar(227, 182, 0);
                         }
+                        cv::Point obj_ctrpt = (*iter).center;
 
-                        line(img, Point(iter->x - 5, iter->y), Point(iter->x, iter->y), color, 1, cv::LINE_4);
-                        line(img, Point(iter->x, iter->y), Point(iter->x, iter->y + 5), color, 1, cv::LINE_4);
+                        line(img, Point(obj_ctrpt.x - 5, obj_ctrpt.y), Point(obj_ctrpt.x, obj_ctrpt.y), color, 1, cv::LINE_4);
+                        line(img, Point(obj_ctrpt.x, obj_ctrpt.y), Point(obj_ctrpt.x, obj_ctrpt.y + 5), color, 1, cv::LINE_4);
 
-                        char cntrStr[16];
-                        sprintf_s(cntrStr, "%d, %d", iter->x, iter->y);
+                        rectangle(img, (*iter).box_pt1, (*iter).box_pt2, color, 1, cv::LINE_4);
+
+                        char cntrStr[32];
+                        sprintf_s(cntrStr, "%d, %d (%d)", obj_ctrpt.x, obj_ctrpt.y, (*iter).area);
                         Size txtSize = getTextSize(cntrStr, cv::FONT_HERSHEY_DUPLEX, 0.4, 1, 0);
-                        rectangle(img, *iter, Point(iter->x + txtSize.width + 5, iter->y - txtSize.height - 6), color, -1);
-                        cv::putText(img, cntrStr, Point(iter->x + 3, iter->y - 4), cv::FONT_HERSHEY_DUPLEX, 0.4, Scalar(255, 255, 255), 1);
+                        rectangle(img, obj_ctrpt, Point(obj_ctrpt.x + txtSize.width + 5, obj_ctrpt.y - txtSize.height - 6), color, -1);
+                        cv::putText(img, cntrStr, Point(obj_ctrpt.x + 3, obj_ctrpt.y - 4), cv::FONT_HERSHEY_DUPLEX, 0.4, Scalar(255, 255, 255), 1);
                     }
                 }
+                else
+                {
+#ifdef _PUSH_MODE_
+                    if (side != None && header_obj != nullptr)
+                    {
+                        if (!alarm)
+                        {
+                            // scara move
+                            float dist;
+                            TgPoint vision_p;
+                            TgWorld obj_cntr, box_p1, box_p2;
+
+                            //std::cout << "push: (" << header_obj->center.x << "," << header_obj->center.y << ")" << std::endl;
+
+                            dist = dptfm.get_distance(header_obj->center.x, header_obj->center.y);
+                            vision_p = parseVisionCoordinate(header_obj->center, img, dist);
+                            obj_cntr = parseWorldCoordinate(vision_p);
+
+                            dist = dptfm.get_distance(side_closed->box_pt1.x, side_closed->box_pt1.y);
+                            vision_p = parseVisionCoordinate(side_closed->box_pt1, img, dist);
+                            box_p1 = parseWorldCoordinate(vision_p);
+
+                            dist = dptfm.get_distance(side_closed->box_pt2.x, side_closed->box_pt2.y);
+                            vision_p = parseVisionCoordinate(side_closed->box_pt2, img, dist);
+                            box_p2 = parseWorldCoordinate(vision_p);
+
+                            TgObject* obj = new TgObject(++rscam->oid_count, TgObject_Type::Push, side, header_discover_time, obj_cntr, box_p1, box_p2);
+
+                            std::unique_lock<std::mutex> lock(*rscam->m_mutex);
+                            rscam->m_pTgObjQueue->push(obj);
+                            std::cout << "[TgObjQueue] New ROI object has been detected and pushed." << std::endl <<
+                                "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), Type(" << obj->type << "), Side(" << side << ")" << std::endl <<
+                                "             Center: " << obj->vision_point << std::endl <<
+                                "             Box_p1: " << obj->box_pt1 << std::endl <<
+                                "             Box_p2: " << obj->box_pt2 << std::endl << std::endl;
+
+                            lock.unlock();
+                            rscam->m_objQueue_cond->notify_one();
+                        }
+                    }
+                    //problem_obj.clear();
+                    side = Side::None;
+                    max_left = 250;
+                    max_right = 390;
+                    if (side_closed != nullptr)
+                        SAFE_DELETE(side_closed);
+                    if (header_obj != nullptr)
+                    {
+                        SAFE_DELETE(header_obj);
+                        //std::cout << "header_obj deconstruct." << std::endl;
+                    }
+                    alarm = false;
+#endif
+                }
+
                 cv::imshow(windowName, img);
 
                 if (rec)
@@ -611,7 +790,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                     char fn_rec2[64] = { 0 };
                     snprintf(fn_rec, 64, "C:/realsense_rec_msk/%d_%d.png", count_rec, (int)active_time_rec);
                     snprintf(fn_rec2, 64, "C:/realsense_rec_ori/%d_%d.png", count_rec, (int)active_time_rec);
-                    imwrite(fn_rec, img);
+                    //imwrite(fn_rec, img);
                     imwrite(fn_rec2, proc);
                     count_rec++;
                 }
@@ -660,8 +839,18 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                 }
             }
         }
+
+#ifdef _PUSH_MODE_
+        if (side_closed != nullptr)
+            SAFE_DELETE(side_closed);
+        if (header_obj != nullptr)
+        {
+            SAFE_DELETE(header_obj);
+            //std::cout << "header_obj deconstruct." << std::endl;
+        }
+#endif
     }
-    destroyWindow(windowName);
+    cv::destroyWindow(windowName);
     std::cout << "[WndProc] Thread destroyed: stream_type(" << (int)stream_type << "), windowName(" << windowName << ")" << endl;
 
     SAFE_DELETE(pyEvalnumpy);
@@ -790,17 +979,34 @@ void WndMouseCallBack(int event, int x, int y, int flags, void* userdata)
 }
 
 
-bool PointY_Cmp(cv::Point& p1, cv::Point& p2) {
-    return p1.y > p2.y;
+bool PointY_Cmp(py::obj_info& obj1, py::obj_info& obj2) {
+    return obj1.center.y > obj2.center.y;
 }
 
-int GetROIObjPoint_Axis_Y(std::vector<cv::Point>* points, int upper, int lower)
+Side GetObjectSide(py::obj_info& obj)
+{
+    // except a~100 right, 150~b left 250~390 blank
+    if (obj.box_pt1.x < 234)
+    {
+        return Side::Left;
+    }
+    else if (obj.box_pt2.x > 417)
+    {
+        return Side::Right;
+    }
+    else
+    {
+        return Side::Center;
+    }
+}
+
+int GetROIObjPoint_Axis_Y(std::vector<py::obj_info>* obj, int upper, int lower)
 {
     int count = 0;
     
-    for (int i = 0; i < points->size(); i++)
+    for (int i = 0; i < obj->size(); i++)
     {
-        int y = (*points)[i].y;
+        int y = (*obj)[i].center.y;
         if (y > lower && y < upper)//³]¸mROI°Ï°ì
         {
             if (++count >= 2)

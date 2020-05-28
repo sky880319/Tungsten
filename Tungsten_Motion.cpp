@@ -1,13 +1,12 @@
 #include "Tungsten_Motion.h"
 #include <iostream>
-#include <windows.h>
 
 #define SAFE_DELETE(pPtr) { delete pPtr; pPtr = NULL; }
 #define TIMEOUT 20
 
-ScRobot::ScRobot()
+ScRobot::ScRobot(int session)
 {
-	sessionIdx = 0;
+	sessionIdx = session;
 	makeID = 23594510;
 	encStr = "0B9287F3AE9D949A7751D8C8E51A50BE46FBA406D7E9CE0B";
 	connIP = "192.168.0.201";
@@ -17,7 +16,7 @@ ScRobot::ScRobot()
 
 ScRobot::~ScRobot()
 {
-	StopProc();
+	//StopProc();
 	Uninitialize();
 	SAFE_DELETE(setting);
 }
@@ -112,8 +111,8 @@ bool ScRobot::Connect()
 	std::cout << "[RsRobot] Data setting successed." << std::endl;
 
 
-	RunProc();
-	SetProc(TgWorld(HOME_X, HOME_Y, 180.0f, 0.f));
+	//RunProc();
+	//SetProc(TgWorld(HOME_X, HOME_Y, 180.0f, 0.f));
 
 	return true;
 }
@@ -285,106 +284,137 @@ bool ScRobot::RunNC(int fileIdx)
 
 bool ScRobot::RunProc()
 {
-	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
+	if (!m_prog)
 	{
-		std::cout << "[TgMotion] Connection failed." << std::endl;
-		return false;
-	}
-	if (COND_PROG_START)
-	{
-		std::cout << "[TgMotion] Scara NC proccess is already running." << std::endl;
 		return false;
 	}
 
-	TG_WAIT(COND_PATH_STATUS(1));
-
-	scif_cmd_WriteR(sessionIdx, REG_X_AXIS, HOME_X * UNIT_TRANSFORM);	//X
-	scif_cmd_WriteR(sessionIdx, REG_Y_AXIS, HOME_Y * UNIT_TRANSFORM);	//Y
-	scif_cmd_WriteR(sessionIdx, REG_Z_AXIS, HOME_Z * UNIT_TRANSFORM);	//Z
-	scif_cmd_WriteR(sessionIdx, REG_WHILE_STATUS, 1); //Run while
-	scif_cmd_WriteR(sessionIdx, REG_ALLOW_RUN, 0); //Not allow move
-
-	scif_cmd_WriteR(sessionIdx, FEATURE_LOAD_NCFILE, NC_MAIN_PROC);
-	int res = scif_cmd_WriteC(sessionIdx, SET_PROG_STATUS, 1);
-
-	TG_WAIT(COND_PROG_START);
-	return res != 0;
+	return m_prog->RunProc();
 }
 
 bool ScRobot::StopProc()
 {
-	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
+	if (!m_prog)
 	{
-		std::cout << "[TgMotion] Connection failed." << std::endl;
 		return false;
 	}
-	if (COND_PROG_END && COND_WHILE_STOP)
-	{
-		std::cout << "[TgMotion] Failed to stop proccess. (Reason: Scara NC proccess is not running.)" << std::endl;
-		return false;
-	}
-	
-	// GO home.
-	SetProc(TgWorld(HOME_X, HOME_Y, 180.0f, 0.f));
 
-	TG_WAIT(COND_NOT_ALLOW_RUN);
-	scif_cmd_WriteR(sessionIdx, REG_WHILE_STATUS, 0); //Stop while
-
-	TG_WAIT(COND_PROG_END);
-	Sleep(100);
-
-	return true;
+	return m_prog->StopProc();
 }
 
 bool ScRobot::SetProc(const TgWorld& ref)
 {
-	time_pt start = std::chrono::steady_clock::now();
-	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
+	if (!m_prog)
 	{
-		std::cout << "[TgMotion] Connection failed." << std::endl;
-		return false;
-	}
-	if (COND_PROG_END && COND_WHILE_STOP)
-	{
-		std::cout << "[TgMotion] Failed to set proccess to moving scara. (Reason: Scara NC proccess is not running.)" << std::endl;
 		return false;
 	}
 
-	TG_WAIT(COND_NOT_ALLOW_RUN);
-
-	if (ref.x >= WORKING_LIMIT_X1 && ref.x <= WORKING_LIMIT_X2 &&
-		ref.y >= WORKING_LIMIT_Y1 && ref.y <= WORKING_LIMIT_Y2 &&
-		ref.z >= WORKING_LIMIT_Z1 && ref.z <= WORKING_LIMIT_Z2)
-	{
-		if (0 != scif_cmd_WriteR(sessionIdx, REG_X_AXIS, ref.x) && 
-			0 != scif_cmd_WriteR(sessionIdx, REG_Y_AXIS, ref.y) && 
-			0 != scif_cmd_WriteR(sessionIdx, REG_Z_AXIS, ref.z))
-		{
-			scif_cmd_WriteR(sessionIdx, REG_ALLOW_RUN, 1); //Allow move
-
-			TG_WAIT(COND_ALLOW_RUN);
-
-			//time_pt start = std::chrono::steady_clock::now();
-			/*TG_WAIT(COND_CUST_R_VAL(8001, 1));
-			long long dur1 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();*/
-			//TG_WAIT(COND_CUST_R_VAL(8002, 1));
-		 //   long long dur2 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-			//long long total_dur = dur2 - dur1;
-			//float dist = ref.getDistance(TgWorld(HOME_X, HOME_Y, 180.0f, 0.f));
-			//std::cout << "移動距離：" << dist << "mm ，通訊時間：" << dur1 << "ms ，移動時間：" << total_dur << "ms ，平均速度：" << dist / ((float)total_dur / 1000) << std::endl;
-
-			//std::cout << "通訊時間：" << dur1 << "ms" << std::endl;
-
-			TG_WAIT(COND_NOT_ALLOW_RUN);
-
-			return true;
-		}
-
-		return false;
-	}
-
-	return false;
+	return m_prog->SetProc(ref);
 }
+
+//
+//bool ScRobot::RunProc()
+//{
+//	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
+//	{
+//		std::cout << "[TgMotion] Connection failed." << std::endl;
+//		return false;
+//	}
+//	if (COND_PROG_START)
+//	{
+//		std::cout << "[TgMotion] Scara NC proccess is already running." << std::endl;
+//		return false;
+//	}
+//
+//	TG_WAIT(COND_PATH_STATUS(1));
+//
+//	scif_cmd_WriteR(sessionIdx, REG_X_AXIS, HOME_X * UNIT_TRANSFORM);	//X
+//	scif_cmd_WriteR(sessionIdx, REG_Y_AXIS, HOME_Y * UNIT_TRANSFORM);	//Y
+//	scif_cmd_WriteR(sessionIdx, REG_Z_AXIS, HOME_Z * UNIT_TRANSFORM);	//Z
+//	scif_cmd_WriteR(sessionIdx, REG_WHILE_STATUS, 1); //Run while
+//	scif_cmd_WriteR(sessionIdx, REG_ALLOW_RUN, 0); //Not allow move
+//
+//	scif_cmd_WriteR(sessionIdx, FEATURE_LOAD_NCFILE, NC_MAIN_PROC);
+//	int res = scif_cmd_WriteC(sessionIdx, SET_PROG_STATUS, 1);
+//
+//	TG_WAIT(COND_PROG_START);
+//	return res != 0;
+//}
+//
+//bool ScRobot::StopProc()
+//{
+//	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
+//	{
+//		std::cout << "[TgMotion] Connection failed." << std::endl;
+//		return false;
+//	}
+//	if (COND_PROG_END && COND_WHILE_STOP)
+//	{
+//		std::cout << "[TgMotion] Failed to stop proccess. (Reason: Scara NC proccess is not running.)" << std::endl;
+//		return false;
+//	}
+//	
+//	// GO home.
+//	SetProc(TgWorld(HOME_X, HOME_Y, 180.0f, 0.f));
+//
+//	TG_WAIT(COND_NOT_ALLOW_RUN);
+//	scif_cmd_WriteR(sessionIdx, REG_WHILE_STATUS, 0); //Stop while
+//
+//	TG_WAIT(COND_PROG_END);
+//	Sleep(100);
+//
+//	return true;
+//}
+//
+//bool ScRobot::SetProc(const TgWorld& ref)
+//{
+//	time_pt start = std::chrono::steady_clock::now();
+//	if (SC_CONN_STATE_OK != scif_GetTalkMsg(sessionIdx, SCIF_CONNECT_STATE))
+//	{
+//		std::cout << "[TgMotion] Connection failed." << std::endl;
+//		return false;
+//	}
+//	if (COND_PROG_END && COND_WHILE_STOP)
+//	{
+//		std::cout << "[TgMotion] Failed to set proccess to moving scara. (Reason: Scara NC proccess is not running.)" << std::endl;
+//		return false;
+//	}
+//
+//	TG_WAIT(COND_NOT_ALLOW_RUN);
+//
+//	if (ref.x >= WORKING_LIMIT_X1 && ref.x <= WORKING_LIMIT_X2 &&
+//		ref.y >= WORKING_LIMIT_Y1 && ref.y <= WORKING_LIMIT_Y2 &&
+//		ref.z >= WORKING_LIMIT_Z1 && ref.z <= WORKING_LIMIT_Z2)
+//	{
+//		if (0 != scif_cmd_WriteR(sessionIdx, REG_X_AXIS, ref.x) && 
+//			0 != scif_cmd_WriteR(sessionIdx, REG_Y_AXIS, ref.y) && 
+//			0 != scif_cmd_WriteR(sessionIdx, REG_Z_AXIS, ref.z))
+//		{
+//			scif_cmd_WriteR(sessionIdx, REG_ALLOW_RUN, 1); //Allow move
+//
+//			TG_WAIT(COND_ALLOW_RUN);
+//
+//			//time_pt start = std::chrono::steady_clock::now();
+//			/*TG_WAIT(COND_CUST_R_VAL(8001, 1));
+//			long long dur1 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();*/
+//			//TG_WAIT(COND_CUST_R_VAL(8002, 1));
+//		 //   long long dur2 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+//			//long long total_dur = dur2 - dur1;
+//			//float dist = ref.getDistance(TgWorld(HOME_X, HOME_Y, 180.0f, 0.f));
+//			//std::cout << "移動距離：" << dist << "mm ，通訊時間：" << dur1 << "ms ，移動時間：" << total_dur << "ms ，平均速度：" << dist / ((float)total_dur / 1000) << std::endl;
+//
+//			//std::cout << "通訊時間：" << dur1 << "ms" << std::endl;
+//
+//			TG_WAIT(COND_NOT_ALLOW_RUN);
+//
+//			return true;
+//		}
+//
+//		return false;
+//	}
+//
+//	return false;
+//}
 
 std::ostream& operator<<(std::ostream& out, const TgPoint& ref)
 {

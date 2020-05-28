@@ -33,7 +33,6 @@
 #define NC_MOVE_TO_POINT 520
 #define NC_MOVE_TO_SUCK  521
 #define NC_MOVE_TO_HOME  522
-#define NC_MAIN_PROC     523
 
 //Wait the program finish by check S22 value become 0.
 //#define WAIT_PROG_END while ((int)scif_ReadS(GET_PROG_STATUS) == 1) { Sleep(10); }
@@ -56,7 +55,7 @@
 class ScRobot
 {
 public:
-    ScRobot();
+    ScRobot(int session);
     ~ScRobot();
 
     bool Connect();
@@ -69,6 +68,8 @@ public:
     bool RunProc();
     bool StopProc();
     bool SetProc(const TgWorld& ref);
+
+    TungstenProgram_Base* m_prog;
 
 private:
     bool Initialize();

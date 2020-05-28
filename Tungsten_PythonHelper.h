@@ -36,7 +36,47 @@ namespace py {
         std::mutex m_Mutex;
     };
 
+    struct obj_info
+    {
+        int area;
+        cv::Point center;
+        cv::Point box_pt1;
+        cv::Point box_pt2;
+
+        obj_info()
+        {
+            area = 0;
+            center = cv::Point();
+            box_pt1 = cv::Point();
+            box_pt2 = cv::Point();
+        }
+
+        obj_info(const obj_info& ref)
+        {
+            *this = ref;
+        }
+
+        obj_info& operator=(const obj_info& ref)
+        {
+            area = ref.area;
+            center = ref.center;
+            box_pt1 = ref.box_pt1;
+            box_pt2 = ref.box_pt2;
+            return *this;
+        }
+
+        //cv::Point getCenterInt()
+        //{
+        //    return cv::Point(center/*(int)center.x, (int)center.y*/);
+        //}
+
+        //cv::Rect getRectInt()
+        //{
+        //    return cv::Rect(box_pt1, box_pt2);
+        //}
+    };
+
     PyObject* ParseNumpy8UC3(cv::Mat& proc);
-    bool ParsePointVector(PyObject* obj, std::vector<cv::Point>* out);
+    bool ParsePointVector(PyObject* obj, std::vector<obj_info>* out);
 }
 #endif
