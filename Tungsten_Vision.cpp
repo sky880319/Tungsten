@@ -539,8 +539,8 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                 }
                 else
                 {
-                    line(img, Point(0, img.rows / 2), Point(img.cols, img.rows / 2), Scalar(38, 194, 237), 1, cv::LINE_4);
-                    line(img, Point(img.cols / 2, 0), Point(img.cols / 2, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
+                    //line(img, Point(0, img.rows / 2), Point(img.cols, img.rows / 2), Scalar(38, 194, 237), 1, cv::LINE_4);
+                    //line(img, Point(img.cols / 2, 0), Point(img.cols / 2, img.rows), Scalar(38, 194, 237), 1, cv::LINE_4);
                 }
 
                 char fpsStr[64];
@@ -650,6 +650,67 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                         }
                     }
 #elif defined _SUCK_MODE_
+    #ifdef _SUCK_MODE_CHKDEFECT_VERSION_
+                    static int boundary = 0;
+
+                    int new_boundary = 0;
+                    std::vector<py::obj_info*> willpush;
+                    for (std::vector<py::obj_info>::iterator iter = vecObjInf.begin(); iter != vecObjInf.end(); ++iter)
+                    {
+                        int y = (*iter).center.y;
+                        if (y > 100 && y < 270)
+                        {
+                            //std::cout << (*iter).getDataStr() << (*iter).getDataStr().compare("Z") << std::endl;
+
+                            if (y > boundary)
+                            {
+                                // add to reverse object order to push.
+                                if (strcmp((*iter).getDataStr().c_str(), "Z") == 0)
+                                    willpush.push_back(&*iter);
+                                //std::cout << (*iter).center.y << std::endl;
+                            }
+                            if (y > new_boundary)
+                            {
+                                new_boundary = y;
+                            }
+                        }
+                    }
+
+                    boundary = new_boundary;
+
+                    for (std::vector<py::obj_info*>::reverse_iterator iter = willpush.rbegin(); iter != willpush.rend(); ++iter)
+                    {
+                        // push to queue
+                        float dist;
+                        TgPoint vision_p;
+                        TgWorld obj_cntr, box_p1, box_p2;
+
+                        dist = dptfm.get_distance((*iter)->center.x, (*iter)->center.y);
+                        vision_p = parseVisionCoordinate((*iter)->center, img, dist);
+                        obj_cntr = parseWorldCoordinate(vision_p);
+
+                        dist = dptfm.get_distance((*iter)->box_pt1.x, (*iter)->box_pt1.y);
+                        vision_p = parseVisionCoordinate((*iter)->box_pt1, img, dist);
+                        box_p1 = parseWorldCoordinate(vision_p);
+
+                        dist = dptfm.get_distance((*iter)->box_pt2.x, (*iter)->box_pt2.y);
+                        vision_p = parseVisionCoordinate((*iter)->box_pt2, img, dist);
+                        box_p2 = parseWorldCoordinate(vision_p);
+
+                        TgObject* obj = new TgObject(++rscam->oid_count, TgObject_Type::Suck, obj_cntr, box_p1, box_p2);
+
+                        std::unique_lock<std::mutex> lock(*rscam->m_mutex);
+                        rscam->m_pTgObjQueue->push(obj);
+                        std::cout << "[TgObjQueue] New ROI object has been detected and pushed. (" << (*iter)->getDataStr() << ")" << std::endl <<
+                            "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), Type(" << obj->type << ")" << std::endl <<
+                            "             Center: " << obj->vision_point << std::endl <<
+                            "             Box_p1: " << obj->box_pt1 << std::endl <<
+                            "             Box_p2: " << obj->box_pt2 << std::endl << std::endl;
+
+                        lock.unlock();
+                        rscam->m_objQueue_cond->notify_one();
+                    }
+    #elif defined _SUCK_MODE_ROI_VERSION_
                     int roi_objnum = GetROIObjPoint_Axis_Y(&vecObjInf, 270, 0); // 375, 105
 
                     if (-1 != roi_objnum)
@@ -682,10 +743,10 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                             std::unique_lock<std::mutex> lock(*rscam->m_mutex);
                             rscam->m_pTgObjQueue->push(obj);
                             std::cout << "[TgObjQueue] New ROI object has been detected and pushed." << std::endl <<
-                                         "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), Type(" << obj->type << std::endl << 
-                                         "             Center: " << obj->vision_point << std::endl <<
-                                         "             Box_p1: " << obj->box_pt1 << std::endl <<
-                                         "             Box_p2: " << obj->box_pt2 << std::endl << std::endl;
+                                "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), Type(" << obj->type << std::endl <<
+                                "             Center: " << obj->vision_point << std::endl <<
+                                "             Box_p1: " << obj->box_pt1 << std::endl <<
+                                "             Box_p2: " << obj->box_pt2 << std::endl << std::endl;
 
                             lock.unlock();
                             rscam->m_objQueue_cond->notify_one();
@@ -695,6 +756,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                     {
                         wait_next_pred = true;
                     }
+#endif
 #endif
 
                     for (std::vector<py::obj_info>::iterator iter = vecObjInf.begin(); iter != vecObjInf.end(); ++iter)
@@ -719,7 +781,7 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                         rectangle(img, (*iter).box_pt1, (*iter).box_pt2, color, 1, cv::LINE_4);
 
                         char cntrStr[32];
-                        sprintf_s(cntrStr, "%d, %d (%d)", obj_ctrpt.x, obj_ctrpt.y, (*iter).area);
+                        sprintf_s(cntrStr, "%s: %d, %d (%d)", (*iter).getDataStr().c_str(), obj_ctrpt.x, obj_ctrpt.y, (*iter).area);
                         Size txtSize = getTextSize(cntrStr, cv::FONT_HERSHEY_DUPLEX, 0.4, 1, 0);
                         rectangle(img, obj_ctrpt, Point(obj_ctrpt.x + txtSize.width + 5, obj_ctrpt.y - txtSize.height - 6), color, -1);
                         cv::putText(img, cntrStr, Point(obj_ctrpt.x + 3, obj_ctrpt.y - 4), cv::FONT_HERSHEY_DUPLEX, 0.4, Scalar(255, 255, 255), 1);

@@ -10,7 +10,9 @@
 #include <condition_variable>
 #include <windows.h>
 
-#define _PUSH_MODE_
+#define _SUCK_MODE_
+//#define _SUCK_MODE_CHKDEFECT_VERSION_
+
 #define UNIT_TRANSFORM    100000
 //#define PEXEL2MM_FACTOR_X -0.552219354839f
 //#define PEXEL2MM_FACTOR_Y -0.551948051948f

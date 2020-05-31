@@ -7,7 +7,7 @@
     #include "Tungsten/TungstenProgram_PushObject.h"
 #endif
 
-//#define _TEST_MODE_
+#define _TEST_MODE_
 
 using namespace ts;
 
@@ -96,7 +96,10 @@ namespace ts
                 std::cout << "[Stream Process] Stopped reason: (m_eState == Error)." << std::endl;
                 g_rscam->Restart();
             }
-
+            else if (g_rscam->GetStatus() == RsCamera::Status::Closed)
+            {
+                break;
+            }
         }
     }
 
@@ -105,7 +108,7 @@ namespace ts
         //TgWorld current;
 #ifndef _TEST_MODE_
         g_scrbt->RunProc();
-        g_scrbt->SetProc(TgWorld(HOME_X, HOME_Y, 180.0f, 0.f));
+        //g_scrbt->SetProc(TgWorld(HOME_X, HOME_Y, 180.0f, 0.f));
 #endif
 
         while (true)
@@ -266,7 +269,7 @@ namespace ts
                     float t_detect2exp = (exp_x > except_curr_x) ? ((exp_x - except_curr_x) / OBJECT_SPEED) : ((except_curr_x - exp_x) / OBJECT_SPEED);
                     float t_robot2exp = std::sqrt(std::pow(current_location.X() - exp_x, 2) + std::pow(current_location.Y() - exp_y, 2) + std::pow(current_location.Z() - exp_z, 2)) / ROBOT_SPEED;
 
-                    delay = (t_detect2exp - t_robot2exp) * 1000 - 392;
+                    delay = (t_detect2exp - t_robot2exp) * 1000 - 342;
                 }
             }
 
@@ -325,7 +328,7 @@ namespace ts
                     float t_robotdown = ((current_location.Z() > exp_z) ? current_location.Z() - exp_z : exp_z - current_location.Z()) / ROBOT_SPEED;
                     float t_push_dist = ((target_y > except_location.Y()) ? target_y - except_location.Y() : except_location.Y() - target_y) / ROBOT_SPEED;
 
-                    delay = (t_detect2exp - (t_robotdown + t_robot2exp + t_push_dist)) * 1000 - 800;
+                    delay = (t_detect2exp - (t_robotdown + t_robot2exp + t_push_dist)) * 1000 - 700;
 
                     //std::cout << "CurX: " << except_curr_x << ", " << except_location << " Delay: " << delay << "ms." << std::endl;
                 }

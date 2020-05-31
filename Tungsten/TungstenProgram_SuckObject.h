@@ -11,7 +11,7 @@
 #define REG_WHILE_STATUS 8506
 #define REG_ALLOW_RUN    8507
 
-#define NC_SUCK_PROC     523
+#define NC_SUCK_PROC     529
 
 class TgProg_SuckObject : public TungstenProgram_Base
 {

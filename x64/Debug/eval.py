@@ -11,6 +11,7 @@ import json
 import os
 import matplotlib.pyplot as plt
 import torch.backends.cudnn as cudnn
+import sys
 
 from data import cfg, set_cfg, set_dataset
 from data import COCODetection, get_label_map, MEANS, COLORS
@@ -47,7 +48,7 @@ def parse_args(argv=None):
                         help='Use cuda to evaulate model')
     parser.add_argument('--fast_nms', default=True, type=str2bool,
                         help='Whether to use a faster, but not entirely correct version of NMS.')
-    parser.add_argument('--cross_class_nms', default=False, type=str2bool,
+    parser.add_argument('--cross_class_nms', default=True, type=str2bool,
                         help='Whether compute NMS cross-class or per-class.')
     parser.add_argument('--display_masks', default=True, type=str2bool,
                         help='Whether or not to display masks over bounding boxes')
@@ -1216,7 +1217,7 @@ def prep_display2(dets_out, img, h, w, undo_transform=True, class_color=False, m
         if obj != num_dets_to_consider:
             return None;
         
-        cntr_pos = np.zeros([obj, 7], dtype='int32')
+        cntr_pos = np.zeros([obj, 10], dtype='int32')
         
         for cont in range(obj):
             M=cv2.moments(color_mask[cont])
@@ -1230,6 +1231,13 @@ def prep_display2(dets_out, img, h, w, undo_transform=True, class_color=False, m
 
         for j in range(num_dets_to_consider):
             cntr_pos[j, 3], cntr_pos[j, 4], cntr_pos[j, 5], cntr_pos[j, 6] = boxes[j, :]
+            clsname = cfg.dataset.class_names[classes[j]]
+            str = ""
+            for c in range(len(clsname)):
+                str += clsname[c]
+                if (c + 1) % 4 == 0 or c + 1 == len(clsname):
+                    cntr_pos[j, 7 + c // 4] = int.from_bytes(bytes(clsname[0:3], 'ascii'), sys.byteorder)
+                    str = ""
         
         return cntr_pos
     
@@ -1278,7 +1286,7 @@ torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 #print('Loading model...', end='')
 net = Yolact()
-net.load_weights(r'C:\Source\Tungsten\x64\Debug\yolact_base_59_16000.pth')
+net.load_weights(r'C:\Source\Tungsten\x64\Debug\yolact_base_73_5000.pth')
 net.eval()
 #print(' Done.')
 

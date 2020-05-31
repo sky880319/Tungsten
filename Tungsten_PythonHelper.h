@@ -42,6 +42,7 @@ namespace py {
         cv::Point center;
         cv::Point box_pt1;
         cv::Point box_pt2;
+        int data[3];
 
         obj_info()
         {
@@ -63,6 +64,20 @@ namespace py {
             box_pt1 = ref.box_pt1;
             box_pt2 = ref.box_pt2;
             return *this;
+        }
+
+        std::string getDataStr()
+        {
+            std::string str = "";
+
+            for (int i = 0; i < 12; i++)
+            {
+                int a = (data[i / 4] >> ((i % 4) * 8)) & 0xFF;
+                str += (char)(a);
+            }
+
+            str += '\0';
+            return str;
         }
 
         //cv::Point getCenterInt()

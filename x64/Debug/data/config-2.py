@@ -156,7 +156,7 @@ my_custom_dataset = dataset_base.copy({
     'valid_info':   'D:/yolact-master/valid/valid_fit/annotations.json',
 
     'has_gt': True,
-    'class_names': ('A', 'A', 'A', 'Z')
+    'class_names': ('A'),
 })
 coco2014_dataset = dataset_base.copy({
     'name': 'COCO 2014',
@@ -688,14 +688,14 @@ yolact_base_config = coco_base_config.copy({
 
     # Dataset stuff
     'dataset': my_custom_dataset,
-    'num_classes': 5,
+    'num_classes': 2,
 
     # Image Size
     'max_size': 550,
     
     # Training params
-    'lr_steps': (2500, 3750, 4375),
-    'max_iter': 5000,
+    'lr_steps': (700, 1500, 1750, 1875),
+    'max_iter': 2000,
     
     # Backbone Settings
     'backbone': resnet50_backbone.copy({
