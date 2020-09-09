@@ -11,11 +11,9 @@
 #include <windows.h>
 
 #define _SUCK_MODE_
-//#define _SUCK_MODE_CHKDEFECT_VERSION_
+#define _SUCK_MODE_CHKDEFECT_VERSION_
 
 #define UNIT_TRANSFORM    100000
-//#define PEXEL2MM_FACTOR_X -0.552219354839f
-//#define PEXEL2MM_FACTOR_Y -0.551948051948f
 #define PEXEL2MM_FACTOR_X -0.4728690791f
 #define PEXEL2MM_FACTOR_Y -0.4783414610f
 #define VISION_COOR_RAD   -0.020271658648131453f
@@ -33,6 +31,8 @@
 #define WORKING_LIMIT_Y2      51085500
 #define WORKING_LIMIT_Z1       9000000
 #define WORKING_LIMIT_Z2      18500000
+#define OBJ_SAFE_SHORTIST_DST	0		// Define with vision coordinate. (realsense distance, unit: mm)
+#define OBJ_SAFE_LONGEST_DST	0		// Define with vision coordinate. (realsense distance, unit: mm)
 
 struct TgWorld;
 struct TgPoint {
@@ -155,9 +155,11 @@ enum TgObject_Type
 	Suck = 1,
 	Push = 2,
 };
+
+/* This enumeration is a extension for push mode to identify the orientation of TgObject */
 enum Side
 {
-	None,
+	None, // When orientation is not need to identify.
 	Left,
 	Center,
 	Right
@@ -190,6 +192,7 @@ struct TgObject
 		return std::chrono::duration_cast<T>(now - time).count();
 	}
 
+	/* Return the current expected position of the TgObject. */
 	TgWorld getExceptLocation(time_pt now)
 	{
 		TgWorld exp_location = vision_point;
@@ -208,6 +211,8 @@ struct TgObject
 
 typedef std::queue<TgObject*> ObjectQueue;
 
+
+/* Provide the new mode an interface to control the scara robot. */
 class TungstenProgram_Base
 {
 public:

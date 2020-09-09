@@ -11,6 +11,9 @@
 #define REG_WHILE_STATUS 8506
 #define REG_ALLOW_RUN    8507
 
+/* The number which defined in the 
+   macro files for the NC file of 
+   SUCK mode: */
 #define NC_SUCK_PROC     529
 
 class TgProg_SuckObject : public TungstenProgram_Base

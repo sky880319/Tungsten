@@ -686,29 +686,49 @@ void RsCamera::ProcStreamByCV(RsCamera * rscam, Features stream_type)
                         TgWorld obj_cntr, box_p1, box_p2;
 
                         dist = dptfm.get_distance((*iter)->center.x, (*iter)->center.y);
-                        vision_p = parseVisionCoordinate((*iter)->center, img, dist);
-                        obj_cntr = parseWorldCoordinate(vision_p);
+                        /* Check if the depth cannot be measured. */
+                        if (0 == dist)
+                        {
+                            std::cout << "<! Tungsten Warning !>" << std::endl <<
+                                "[TgObjQueue] New ROI object has been detected but not pushed. (" << (*iter)->getDataStr() << ")" << std::endl <<
+                                "  - ERROR -  Reason: Depth cannot be measured. " << std::endl <<
+                                "             Method: Ignore this object. " << std::endl;
+                        }
+                        else if (dist < OBJ_SAFE_SHORTIST_DST / 1000)
+                        {
+                            std::cout << "<! Tungsten Warning !>" << std::endl <<
+                                "[TgObjQueue] New ROI object has been detected but not pushed. (" << (*iter)->getDataStr() << ")" << std::endl <<
+                                "  - ERROR -  Reason: Depth is too short." << std::endl <<
+                                "             Reference: [macro]   OBJ_SAFE_SHORTIST_DST == " << OBJ_SAFE_SHORTIST_DST << std::endl <<
+                                "                        [Loc_Var] dist == " << dist << std::endl <<
+                                "             Method: Ignore this object. " << std::endl;
+                        }
+                        else
+                        {
+                            vision_p = parseVisionCoordinate((*iter)->center, img, dist);
+                            obj_cntr = parseWorldCoordinate(vision_p);
 
-                        dist = dptfm.get_distance((*iter)->box_pt1.x, (*iter)->box_pt1.y);
-                        vision_p = parseVisionCoordinate((*iter)->box_pt1, img, dist);
-                        box_p1 = parseWorldCoordinate(vision_p);
+                            dist = dptfm.get_distance((*iter)->box_pt1.x, (*iter)->box_pt1.y);
+                            vision_p = parseVisionCoordinate((*iter)->box_pt1, img, dist);
+                            box_p1 = parseWorldCoordinate(vision_p);
 
-                        dist = dptfm.get_distance((*iter)->box_pt2.x, (*iter)->box_pt2.y);
-                        vision_p = parseVisionCoordinate((*iter)->box_pt2, img, dist);
-                        box_p2 = parseWorldCoordinate(vision_p);
+                            dist = dptfm.get_distance((*iter)->box_pt2.x, (*iter)->box_pt2.y);
+                            vision_p = parseVisionCoordinate((*iter)->box_pt2, img, dist);
+                            box_p2 = parseWorldCoordinate(vision_p);
 
-                        TgObject* obj = new TgObject(++rscam->oid_count, TgObject_Type::Suck, obj_cntr, box_p1, box_p2);
+                            TgObject* obj = new TgObject(++rscam->oid_count, TgObject_Type::Suck, obj_cntr, box_p1, box_p2);
 
-                        std::unique_lock<std::mutex> lock(*rscam->m_mutex);
-                        rscam->m_pTgObjQueue->push(obj);
-                        std::cout << "[TgObjQueue] New ROI object has been detected and pushed. (" << (*iter)->getDataStr() << ")" << std::endl <<
-                            "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), Type(" << obj->type << ")" << std::endl <<
-                            "             Center: " << obj->vision_point << std::endl <<
-                            "             Box_p1: " << obj->box_pt1 << std::endl <<
-                            "             Box_p2: " << obj->box_pt2 << std::endl << std::endl;
+                            std::unique_lock<std::mutex> lock(*rscam->m_mutex);
+                            rscam->m_pTgObjQueue->push(obj);
+                            std::cout << "[TgObjQueue] New ROI object has been detected and pushed. (" << (*iter)->getDataStr() << ")" << std::endl <<
+                                "  - PUSH -   Queue(" << rscam->m_pTgObjQueue->size() << "), oID(" << rscam->oid_count << "), Type(" << obj->type << ")" << std::endl <<
+                                "             Center: " << obj->vision_point << std::endl <<
+                                "             Box_p1: " << obj->box_pt1 << std::endl <<
+                                "             Box_p2: " << obj->box_pt2 << std::endl << std::endl;
 
-                        lock.unlock();
-                        rscam->m_objQueue_cond->notify_one();
+                            lock.unlock();
+                            rscam->m_objQueue_cond->notify_one();
+                        }
                     }
     #elif defined _SUCK_MODE_ROI_VERSION_
                     int roi_objnum = GetROIObjPoint_Axis_Y(&vecObjInf, 270, 0); // 375, 105
